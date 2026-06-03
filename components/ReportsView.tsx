@@ -185,9 +185,9 @@ export const ReportsView: React.FC = () => {
       // Intentar guardar primero con el método de compartir (más compatible en Expo Go)
       const fileUri = FileSystem.cacheDirectory + fileName;
 
-      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8
-      });
+      // Simplificación Senior: Eliminamos objetos de codificación externos que causan el error de 'undefined'
+      // Expo maneja UTF-8 por defecto al pasarle un string directamente.
+      await FileSystem.writeAsStringAsync(fileUri, csvContent);
 
       const isSharingAvailable = await Sharing.isAvailableAsync();
 
@@ -195,7 +195,6 @@ export const ReportsView: React.FC = () => {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/csv',
           dialogTitle: 'Descargar Reporte de Calidad',
-          UTI: 'public.comma-separated-values-text'
         });
       } else {
         // Si fallan los métodos modernos, intentar el SAF de Android
@@ -207,7 +206,7 @@ export const ReportsView: React.FC = () => {
               fileName,
               'text/csv'
             );
-            await FileSystem.writeAsStringAsync(uri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+            await FileSystem.writeAsStringAsync(uri, csvContent);
             Alert.alert("Éxito", "Reporte guardado exitosamente en la carpeta seleccionada.");
           }
         } else {
