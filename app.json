@@ -24,6 +24,22 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "da2dbb08-9b8b-4efe-95a9-35c011d228a8"
+      }
+    },
+    "owner": "felixemfs-organization",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/da2dbb08-9b8b-4efe-95a9-35c011d228a8"
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
   }
 }

@@ -155,52 +155,72 @@ export const ReportsView: React.FC = () => {
 
   // ── Handler del botón de exportar ──
   const handleExport = async () => {
-    if (historyData.length === 0) return;
-
     try {
+      let dataToExport = [...historyData];
+
+      // VALIDACIÓN: Si no hay datos, generar datos ficticios para probar
+      if (dataToExport.length === 0) {
+        Alert.alert(
+          "Historial Vacío",
+          "No hay muestras reales aún. Se generará un reporte de prueba con datos ficticios.",
+          [{ text: "Continuar" }]
+        );
+        dataToExport = [
+          { time: "08:00:00", ph: 7.2, density: 1.002, turbidity: 2.5 },
+          { time: "09:00:00", ph: 7.5, density: 1.005, turbidity: 4.8 },
+          { time: "10:00:00", ph: 8.1, density: 1.012, turbidity: 15.2 },
+        ];
+      }
+
       // 1. Generar Contenido CSV
       const header = "Hora,pH,Densidad (g/cm3),Turbidez (NTU)\n";
-      const rows = historyData.map(r =>
+      const rows = dataToExport.map(r =>
         `${r.time},${r.ph},${r.density},${r.turbidity}`
       ).join("\n");
       const csvContent = header + rows;
 
       // 2. Definir nombre del archivo
-      const fileName = `Reporte_Turno_${new Date().toISOString().split('T')[0]}.csv`;
+      const fileName = `Reporte_TPH_${new Date().getTime()}.csv`;
 
-      if (Platform.OS === 'android') {
-        // En Android, podemos pedir permiso para guardar en una carpeta específica
-        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      // Intentar guardar primero con el método de compartir (más compatible en Expo Go)
+      const fileUri = FileSystem.cacheDirectory + fileName;
 
-        if (permissions.granted) {
-          // Crear el archivo en la carpeta elegida
-          const uri = await FileSystem.StorageAccessFramework.createFileAsync(
-            permissions.directoryUri,
-            fileName,
-            'text/csv'
-          );
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+        encoding: FileSystem.EncodingType.UTF8
+      });
 
-          await FileSystem.writeAsStringAsync(uri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
-          Alert.alert("Éxito", "Reporte guardado en el dispositivo");
-        } else {
-          // Si no dan permiso, usamos el método de compartir como respaldo
-          await fallbackShare(csvContent, fileName);
-        }
+      const isSharingAvailable = await Sharing.isAvailableAsync();
+
+      if (isSharingAvailable) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Descargar Reporte de Calidad',
+          UTI: 'public.comma-separated-values-text'
+        });
       } else {
-        // iOS y otros: compartir es la forma estándar
-        await fallbackShare(csvContent, fileName);
+        // Si fallan los métodos modernos, intentar el SAF de Android
+        if (Platform.OS === 'android') {
+          const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+          if (permissions.granted) {
+            const uri = await FileSystem.StorageAccessFramework.createFileAsync(
+              permissions.directoryUri,
+              fileName,
+              'text/csv'
+            );
+            await FileSystem.writeAsStringAsync(uri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+            Alert.alert("Éxito", "Reporte guardado exitosamente en la carpeta seleccionada.");
+          }
+        } else {
+          throw new Error("La función de compartir no está disponible en este dispositivo.");
+        }
       }
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "No se pudo guardar el reporte");
-    }
-  };
-
-  const fallbackShare = async (content: string, fileName: string) => {
-    const fileUri = FileSystem.documentDirectory + fileName;
-    await FileSystem.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri);
+    } catch (error: any) {
+      console.error("Export Error:", error);
+      Alert.alert(
+        "Error de Exportación",
+        `No se pudo completar la operación.\n\nDetalle: ${error.message || 'Error desconocido'}`,
+        [{ text: "Entendido" }]
+      );
     }
   };
 
