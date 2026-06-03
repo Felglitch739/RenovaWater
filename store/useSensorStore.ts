@@ -6,7 +6,7 @@ import { create } from 'zustand';
 
 /** Estado cualitativo de cada métrica */
 export type MetricStatus = 'ok' | 'warning' | 'danger';
-export type AppTheme = 'industrial' | 'tph';
+export type AppTheme = 'dark' | 'light';
 
 /** Un registro histórico de una muestra del sensor */
 export interface HistoryRecord {
@@ -194,7 +194,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
   totalAlerts: 0,
   sessionStart: null,
   sessionStartTime: null,
-  theme: 'industrial',
+  theme: 'dark',
 
   setTheme: (theme: AppTheme) => set({ theme }),
 

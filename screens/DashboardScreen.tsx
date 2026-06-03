@@ -40,9 +40,10 @@ const RIGHT_PANEL_HEADER: Record<NavTab, { title: string; sub: string }> = {
 // ─────────────────────────────────────────────
 
 const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, value, unit, status, idealRange, theme }) => {
-  const okText = theme === 'tph' ? 'text-sky-400' : 'text-emerald-400';
-  const okBadge = theme === 'tph' ? 'bg-sky-500/10' : 'bg-emerald-500/10';
-  const okBorder = theme === 'tph' ? 'border-l-sky-500' : 'border-l-emerald-500';
+  const isDark = theme === 'dark';
+  const okText = 'text-sky-500';
+  const okBadge = isDark ? 'bg-sky-500/10' : 'bg-sky-500/5';
+  const okBorder = 'border-l-sky-500';
 
   const STATUS_CONFIG: Record<
     MetricStatus,
@@ -53,49 +54,55 @@ const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, va
       badgeBg: okBadge,
       badgeText: okText,
       label: 'APT',
-      dotColor: theme === 'tph' ? 'bg-sky-400' : 'bg-emerald-400',
+      dotColor: 'bg-sky-500',
     },
     warning: {
       borderColor: 'border-l-amber-400',
-      badgeBg: 'bg-amber-400/10',
-      badgeText: 'text-amber-400',
+      badgeBg: isDark ? 'bg-amber-400/10' : 'bg-amber-400/5',
+      badgeText: 'text-amber-500',
       label: 'PRECAUCIÓN',
       dotColor: 'bg-amber-400',
     },
     danger: {
       borderColor: 'border-l-red-500',
-      badgeBg: 'bg-red-500/10',
-      badgeText: 'text-red-400',
+      badgeBg: isDark ? 'bg-red-500/10' : 'bg-red-500/5',
+      badgeText: 'text-red-500',
       label: 'NO APTA',
       dotColor: 'bg-red-500',
     },
   };
 
   const cfg = STATUS_CONFIG[status];
+  const cardColor = isDark ? 'bg-zinc-800/80' : 'bg-white';
+  const borderColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
+  const titleColor = isDark ? 'text-zinc-400' : 'text-slate-500';
+  const valueColor = isDark ? 'text-white' : 'text-slate-900';
+  const unitColor = isDark ? 'text-zinc-500' : 'text-slate-400';
+
   return (
     <View
-      className={`bg-zinc-800/80 rounded-xl border-l-4 ${cfg.borderColor} border border-zinc-700/50 p-4 mb-3`}
+      className={`${cardColor} rounded-xl border-l-4 ${cfg.borderColor} border ${borderColor} p-4 mb-3 shadow-sm`}
     >
       {/* Header */}
       <View className="flex-row justify-between items-center mb-3">
-        <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-widest">
+        <Text className={`${titleColor} text-[10px] font-bold uppercase tracking-widest`}>
           {title}
         </Text>
         <View className={`px-2 py-0.5 rounded ${cfg.badgeBg}`}>
-          <Text className={`${cfg.badgeText} text-xs font-bold`}>{cfg.label}</Text>
+          <Text className={`${cfg.badgeText} text-[9px] font-bold`}>{cfg.label}</Text>
         </View>
       </View>
 
       {/* Valor principal */}
       <View className="flex-row items-baseline mb-2">
-        <Text className="text-white text-4xl font-bold font-mono tracking-tighter">
+        <Text className={`${valueColor} text-3xl font-bold font-mono tracking-tighter`}>
           {value}
         </Text>
-        <Text className="text-zinc-500 text-sm ml-1.5 font-medium">{unit}</Text>
+        <Text className={`${unitColor} text-[10px] ml-1.5 font-bold uppercase`}>{unit}</Text>
       </View>
 
       {/* Rango ideal */}
-      <Text className="text-zinc-600 text-xs">Rango: {idealRange}</Text>
+      <Text className={`${unitColor} text-[9px] font-medium`}>Rango: {idealRange}</Text>
     </View>
   );
 };
@@ -119,7 +126,8 @@ const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, thres
     : 10;
 
   // Color DINÁMICO basado en el tema
-  const okColor = theme === 'tph' ? '#0EA5E9' : '#10b981';
+  const isDark = theme === 'dark';
+  const okColor = '#0EA5E9'; // TPH Cyan siempre para el estado OK
 
   const barColor =
     record.turbidity <= threshold
@@ -161,48 +169,11 @@ const TrendChart: React.FC<TrendChartProps> = ({ data, threshold, theme }) => {
   const lastRecord = data[data.length - 1];
   const firstRecord = data[0];
 
-  const okColor = theme === 'tph' ? 'bg-sky-500' : 'bg-emerald-500';
+  const okColor = 'bg-sky-500'; // TPH Cyan
 
-  return (
-    <View className="flex-1">
-      {/* Título de la gráfica + leyenda */}
-      <View className="flex-row justify-between items-baseline mb-3">
-        <Text className="text-zinc-300 text-[10px] font-bold uppercase tracking-wider">
-          Tendencia Turbidez
-        </Text>
-        <View className="flex-row items-center gap-x-2">
-          <View className="flex-row items-center">
-            <View className={`w-1.5 h-1.5 rounded-full ${okColor} mr-1`} />
-            <Text className="text-zinc-600 text-[8px]">≤{threshold}</Text>
-          </View>
-          <View className="flex-row items-center">
-            <View className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />
-            <Text className="text-zinc-600 text-[8px]">≤{threshold * 4}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Área de barras */}
-      {data.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-zinc-600 text-[9px] uppercase tracking-widest">
-            Sin datos · Conectar sensor
-          </Text>
-        </View>
-      ) : (
-        <View className="flex-1 flex-row items-end border-b border-zinc-700/50 pb-1">
-          {data.map((record, index) => (
-            <ChartBar
-              key={`${record.time}-${index}`}
-              record={record}
-              maxTurbidity={maxTurbidity}
-              isLast={index === data.length - 1}
-              threshold={threshold}
-              theme={theme}
-            />
-          ))}
-        </View>
-      )}
+  const isDark = theme === 'dark';
+  const legendColor = isDark ? 'text-zinc-600' : 'text-slate-400';
+  const axisColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
 
       {/* Etiquetas de tiempo */}
       {data.length > 1 && (
@@ -224,14 +195,15 @@ interface StatCardProps {
   value: string;
   unit?: string;
   accent?: string; // clase de texto de color
+  isDark: boolean;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ label, value, unit, accent = 'text-white' }) => (
-  <View className="flex-1 bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-3 mx-1">
-    <Text className="text-zinc-500 text-xs uppercase tracking-widest mb-1.5">{label}</Text>
+const StatCard: React.FC<StatCardProps> = ({ label, value, unit, accent = 'text-white', isDark }) => (
+  <View className={`flex-1 ${isDark ? 'bg-zinc-800/60' : 'bg-white'} border ${isDark ? 'border-zinc-700/50' : 'border-slate-200'} rounded-xl p-3 mx-1 shadow-sm`}>
+    <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[9px] uppercase tracking-widest mb-1.5 font-bold`}>{label}</Text>
     <View className="flex-row items-baseline">
       <Text className={`${accent} text-2xl font-bold font-mono`}>{value}</Text>
-      {unit ? <Text className="text-zinc-600 text-xs ml-1">{unit}</Text> : null}
+      {unit ? <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] ml-1 font-bold`}>{unit}</Text> : null}
     </View>
   </View>
 );
@@ -244,6 +216,7 @@ interface NavBarProps {
   active: NavTab;
   onSelect: (tab: NavTab) => void;
   isConnected: boolean;
+  isDark: boolean;
 }
 
 const NAV_ITEMS: { id: NavTab; icon: string; label: string }[] = [
@@ -253,8 +226,8 @@ const NAV_ITEMS: { id: NavTab; icon: string; label: string }[] = [
   { id: 'ble',      icon: '⊕',  label: 'BLE'       },
 ];
 
-const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected }) => (
-  <View className="flex-row bg-zinc-900 border-t border-zinc-800 px-2 pb-2 pt-2">
+const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected, isDark }) => (
+  <View className={`flex-row ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'} border-t px-2 pb-2 pt-2`}>
     {NAV_ITEMS.map((item) => {
       const isActive = active === item.id;
       const isBle = item.id === 'ble';
@@ -271,30 +244,30 @@ const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected }) => 
             className={
               isBle
                 ? isConnected
-                  ? 'text-emerald-400'
-                  : 'text-zinc-600'
+                  ? 'text-sky-500'
+                  : isDark ? 'text-zinc-600' : 'text-slate-300'
                 : isActive
-                ? 'text-zinc-100'
-                : 'text-zinc-600'
+                ? isDark ? 'text-zinc-100' : 'text-sky-600'
+                : isDark ? 'text-zinc-600' : 'text-slate-300'
             }
           >
             {item.icon}
           </Text>
           <Text
-            className={`text-xs mt-0.5 font-medium ${
+            className={`text-[10px] mt-0.5 font-bold uppercase tracking-tighter ${
               isBle
                 ? isConnected
-                  ? 'text-emerald-400'
-                  : 'text-zinc-600'
+                  ? 'text-sky-500'
+                  : isDark ? 'text-zinc-600' : 'text-slate-300'
                 : isActive
-                ? 'text-zinc-200'
-                : 'text-zinc-600'
+                ? isDark ? 'text-zinc-200' : 'text-sky-600'
+                : isDark ? 'text-zinc-600' : 'text-slate-300'
             }`}
           >
             {item.label}
           </Text>
           {isActive && !isBle && (
-            <View className="absolute bottom-0 w-1 h-1 rounded-full bg-zinc-300" />
+            <View className={`absolute bottom-0 w-1 h-1 rounded-full ${isDark ? 'bg-zinc-300' : 'bg-sky-600'}`} />
           )}
         </TouchableOpacity>
       );
@@ -310,16 +283,17 @@ interface ActionButtonProps {
   label: string;
   icon: string;
   onPress: () => void;
+  isDark: boolean;
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ label, icon, onPress }) => (
+const ActionButton: React.FC<ActionButtonProps> = ({ label, icon, onPress, isDark }) => (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.75}
-    className="flex-1 flex-row items-center justify-center border border-zinc-700 rounded-xl py-3 mx-1"
+    className={`flex-1 flex-row items-center justify-center border ${isDark ? 'border-zinc-700 bg-zinc-800/40' : 'border-slate-200 bg-white'} rounded-xl py-3 mx-1 shadow-sm`}
   >
-    <Text className="text-zinc-400 text-base mr-2">{icon}</Text>
-    <Text className="text-zinc-400 text-xs font-semibold uppercase tracking-wider">
+    <Text className="text-sky-500 text-base mr-2">{icon}</Text>
+    <Text className={`${isDark ? 'text-zinc-400' : 'text-slate-600'} text-[10px] font-bold uppercase tracking-wider`}>
       {label}
     </Text>
   </TouchableOpacity>
@@ -363,11 +337,27 @@ export const DashboardScreen: React.FC = () => {
     disconnect,
   } = useSensorStore();
 
-  // Colores según tema
-  const brandPrimary = theme === 'tph' ? '#0EA5E9' : '#10b981'; // Cyan-500 vs Emerald-500
-  const brandBg = theme === 'tph' ? 'bg-sky-500/10' : 'bg-emerald-500/10';
-  const brandText = theme === 'tph' ? 'text-sky-400' : 'text-emerald-400';
-  const brandBorder = theme === 'tph' ? 'border-sky-500/30' : 'border-emerald-500/30';
+  // Colores según tema (Inspirados en el Logo TPH: Azules y Cianes)
+  const isDark = theme === 'dark';
+
+  // Paleta TPH
+  const tphBlue = '#075985'; // sky-800
+  const tphCyan = '#0EA5E9'; // sky-500
+  const tphLightBlue = '#E0F2FE'; // sky-100
+
+  const brandPrimary = tphCyan;
+  const brandBg = isDark ? 'bg-sky-500/10' : 'bg-sky-500/5';
+  const brandText = isDark ? 'text-sky-400' : 'text-sky-600';
+  const brandBorder = isDark ? 'border-sky-500/30' : 'border-sky-200';
+
+  const bgColor = isDark ? 'bg-zinc-900' : 'bg-slate-50';
+  const cardColor = isDark ? 'bg-zinc-800/80' : 'bg-white';
+  const borderColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
+  const textColor = isDark ? 'text-white' : 'text-slate-900';
+  const subTextColor = isDark ? 'text-zinc-500' : 'text-slate-500';
+  const headerBorder = isDark ? 'border-zinc-800' : 'border-slate-200';
+  const navBg = isDark ? 'bg-zinc-900' : 'bg-white';
+  const navBorder = isDark ? 'border-zinc-800' : 'border-slate-200';
 
   // Iniciar simulación al montar, limpiar al desmontar
   useEffect(() => {
@@ -413,71 +403,64 @@ export const DashboardScreen: React.FC = () => {
     return Math.max(0, Math.round((1 - alertRatio) * 100));
   }, [isConnected, historyData.length, totalAlerts]);
 
-  const healthColor = systemHealth > 90 ? 'text-emerald-400' : systemHealth > 70 ? 'text-amber-400' : 'text-red-400';
+  const healthColor = systemHealth > 90 ? 'text-emerald-500' : systemHealth > 70 ? 'text-amber-500' : 'text-red-500';
 
   return (
-    <SafeAreaView className="flex-1 bg-zinc-900">
-      <StatusBar barStyle="light-content" backgroundColor="#09090b" />
+    <SafeAreaView className={`flex-1 ${bgColor}`}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? "#09090b" : "#f8fafc"} />
 
       {/* ─── HEADER ─── */}
-      <View className="flex-row items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800">
+      <View className={`flex-row items-center justify-between px-5 pt-4 pb-3 border-b ${headerBorder}`}>
         <View className="flex-row items-center">
+          <Image
+            source={require('../assets/TPH_Monitor_Icon.png')}
+            className="w-10 h-10 mr-3"
+            resizeMode="contain"
+          />
           <View>
-            <Text className="text-white text-xl font-bold tracking-tight">
-              T.P.H Monitor
-            </Text>
-            <Text className="text-zinc-500 text-[9px] font-bold uppercase tracking-[2px]">
+            <Image
+              source={isDark ? require('../assets/TPH_Monitor_Textlogo.png') : require('../assets/TPH_MonitorLogo.png')}
+              className="w-32 h-6"
+              resizeMode="contain"
+              style={{ tintColor: isDark ? undefined : '#075985' }}
+            />
+            <Text className={`${subTextColor} text-[8px] font-bold uppercase tracking-[1px] mt-0.5`}>
               Water Quality Monitor
             </Text>
           </View>
         </View>
 
-        {/* Salud del Sistema (Nuevo) */}
+        {/* Salud del Sistema */}
         {isConnected && (
           <View className="items-end mr-4">
-            <Text className="text-zinc-600 text-[8px] font-bold uppercase">Estado</Text>
+            <Text className={`${subTextColor} text-[8px] font-bold uppercase`}>Salud</Text>
             <Text className={`${healthColor} text-lg font-mono font-bold`}>{systemHealth}%</Text>
           </View>
         )}
 
-        {/* Selector de Tema (Botón de Logo) */}
+        {/* Selector de Tema */}
         <TouchableOpacity
-          onPress={() => setTheme(theme === 'industrial' ? 'tph' : 'industrial')}
-          className="mr-2"
+          onPress={() => setTheme(isDark ? 'light' : 'dark')}
+          className={`p-2 rounded-xl ${isDark ? 'bg-zinc-800' : 'bg-slate-100'} border ${borderColor}`}
           activeOpacity={0.7}
         >
-          <Image
-            source={require('../assets/TPH_MonitorLogo.jpeg')}
-            className={`w-10 h-10 rounded-lg ${theme === 'tph' ? 'border-2 border-sky-400' : ''}`}
-            resizeMode="contain"
-          />
+          <Text className="text-lg">{isDark ? '🌙' : '☀️'}</Text>
         </TouchableOpacity>
-
-        {/* Indicador de estado compacto */}
-        <View className="flex-row items-center bg-zinc-800/80 rounded-xl px-3 py-2 border border-zinc-700/30">
-          <View className={`w-2 h-2 rounded-full mr-2 ${connDotColor}`} />
-          <View>
-            <Text className="text-zinc-300 text-[10px] font-bold">{connLabel}</Text>
-            <Text className="text-zinc-600 text-[10px] font-mono">
-              {formatTimestamp(lastUpdated)}
-            </Text>
-          </View>
-        </View>
       </View>
 
-      {/* ─── BODY: ENFOQUE MÓVIL (VERTICAL) ─── */}
+      {/* ─── BODY: ENFOQUE MÓVIL ─── */}
       <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
 
         {/* ── SECCIÓN 1: MÉTRICAS ACTUALES ── */}
         <View className="mb-6">
           <View className="flex-row justify-between items-center mb-3 px-1">
-            <Text className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">
+            <Text className={`${subTextColor} text-[10px] font-bold uppercase tracking-widest`}>
               Lecturas en Tiempo Real
             </Text>
             {isConnected && (
-              <View className="flex-row items-center bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                <View className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5" />
-                <Text className="text-emerald-400 text-[9px] font-bold">FLUJO ESTABLE</Text>
+              <View className={`flex-row items-center ${brandBg} px-2 py-0.5 rounded-full`}>
+                <View className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5" />
+                <Text className={`${brandText} text-[9px] font-bold`}>SISTEMA ACTIVO</Text>
               </View>
             )}
           </View>
@@ -539,12 +522,12 @@ export const DashboardScreen: React.FC = () => {
         {/* ── SECCIÓN 2: VISTA DETALLADA (TABS) ── */}
         <View className="flex-1 pb-10">
           <View className="flex-row items-center mb-4">
-            <View className="w-1 h-4 bg-zinc-500 rounded-full mr-3" />
+            <View className={`w-1 h-4 ${isDark ? 'bg-zinc-500' : 'bg-slate-400'} rounded-full mr-3`} />
             <View>
-              <Text className="text-zinc-300 text-sm font-bold">
+              <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-bold`}>
                 {RIGHT_PANEL_HEADER[activeTab].title}
               </Text>
-              <Text className="text-zinc-600 text-[10px]">
+              <Text className={`${subTextColor} text-[10px]`}>
                 {RIGHT_PANEL_HEADER[activeTab].sub}
               </Text>
             </View>
@@ -554,7 +537,7 @@ export const DashboardScreen: React.FC = () => {
           <View className="min-h-[300px]">
             {activeTab === 'monitor' && (
               <>
-                <View className="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 mb-4">
+                <View className={`${cardColor} border ${borderColor} rounded-2xl p-4 mb-4 shadow-sm`}>
                   <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
                 </View>
 
@@ -562,7 +545,8 @@ export const DashboardScreen: React.FC = () => {
                   <StatCard
                     label="Prom. pH"
                     value={stats.avgPh}
-                    accent={stats.avgPh === '--' ? 'text-zinc-600' : 'text-white'}
+                    accent={stats.avgPh === '--' ? subTextColor : textColor}
+                    isDark={isDark}
                   />
                   <StatCard
                     label="Pico Tur."
@@ -570,11 +554,12 @@ export const DashboardScreen: React.FC = () => {
                     unit="NTU"
                     accent={
                       stats.peakTurbidity === '--'
-                        ? 'text-zinc-600'
+                        ? subTextColor
                         : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
-                        ? 'text-red-400'
-                        : 'text-white'
+                        ? 'text-red-500'
+                        : textColor
                     }
+                    isDark={isDark}
                   />
                 </View>
 
@@ -583,11 +568,13 @@ export const DashboardScreen: React.FC = () => {
                     icon="⚙"
                     label="Límites"
                     onPress={() => setIsConfigOpen(true)}
+                    isDark={isDark}
                   />
                   <ActionButton
                     icon="≡"
                     label="Historial"
                     onPress={() => setActiveTab('informes')}
+                    isDark={isDark}
                   />
                 </View>
               </>
@@ -616,6 +603,7 @@ export const DashboardScreen: React.FC = () => {
         active={activeTab}
         onSelect={setActiveTab}
         isConnected={isConnected}
+        isDark={isDark}
       />
 
       {/* ─── MODALES ─── */}
