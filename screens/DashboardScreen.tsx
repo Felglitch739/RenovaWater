@@ -391,14 +391,14 @@ export const DashboardScreen: React.FC = () => {
   const brandText = isDark ? 'text-sky-400' : 'text-sky-600';
   const brandBorder = isDark ? 'border-sky-500/30' : 'border-sky-200';
 
-  const bgColor = isDark ? 'bg-zinc-900' : 'bg-slate-50';
+  const bgColor = isDark ? 'bg-zinc-900' : 'bg-slate-100'; // Un gris más claro pero con contraste
   const cardColor = isDark ? 'bg-zinc-800/80' : 'bg-white';
-  const borderColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
+  const borderColor = isDark ? 'border-zinc-700/50' : 'border-slate-300'; // Borde más marcado en claro
   const textColor = isDark ? 'text-white' : 'text-slate-900';
-  const subTextColor = isDark ? 'text-zinc-500' : 'text-slate-500';
-  const headerBorder = isDark ? 'border-zinc-800' : 'border-slate-200';
+  const subTextColor = isDark ? 'text-zinc-500' : 'text-slate-600'; // Texto más oscuro en claro
+  const headerBorder = isDark ? 'border-zinc-800' : 'border-slate-300';
   const navBg = isDark ? 'bg-zinc-900' : 'bg-white';
-  const navBorder = isDark ? 'border-zinc-800' : 'border-slate-200';
+  const navBorder = isDark ? 'border-zinc-800' : 'border-slate-300';
 
   // Iniciar simulación al montar, limpiar al desmontar
   useEffect(() => {
@@ -459,12 +459,10 @@ export const DashboardScreen: React.FC = () => {
             resizeMode="contain"
           />
           <View>
-            <Image
-              source={isDark ? require('../assets/TPH_Monitor_Textlogo.png') : require('../assets/TPH_MonitorLogo.png')}
-              className="w-32 h-6"
-              resizeMode="contain"
-              style={{ tintColor: isDark ? undefined : '#075985' }}
-            />
+            <View className="flex-row items-center">
+              <Text className={`${textColor} text-xl font-bold tracking-tight`}>T.P.H</Text>
+              <Text className="text-sky-500 text-xl font-bold tracking-tight ml-1.5">Monitor</Text>
+            </View>
             <Text className={`${subTextColor} text-[8px] font-bold uppercase tracking-[1px] mt-0.5`}>
               Water Quality Monitor
             </Text>
