@@ -39,47 +39,38 @@ const RIGHT_PANEL_HEADER: Record<NavTab, { title: string; sub: string }> = {
 // Definidas fuera del componente para evitar re-renders
 // ─────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<
-  MetricStatus,
-  { borderColor: string; badgeBg: string; badgeText: string; label: string; dotColor: string }
-> = {
-  ok: {
-    borderColor: 'border-l-emerald-500',
-    badgeBg: 'bg-emerald-500/10',
-    badgeText: 'text-emerald-400',
-    label: 'APT',
-    dotColor: 'bg-emerald-400',
-  },
-  warning: {
-    borderColor: 'border-l-amber-400',
-    badgeBg: 'bg-amber-400/10',
-    badgeText: 'text-amber-400',
-    label: 'PRECAUCIÓN',
-    dotColor: 'bg-amber-400',
-  },
-  danger: {
-    borderColor: 'border-l-red-500',
-    badgeBg: 'bg-red-500/10',
-    badgeText: 'text-red-400',
-    label: 'NO APTA',
-    dotColor: 'bg-red-500',
-  },
-};
+const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, value, unit, status, idealRange, theme }) => {
+  const okText = theme === 'tph' ? 'text-sky-400' : 'text-emerald-400';
+  const okBadge = theme === 'tph' ? 'bg-sky-500/10' : 'bg-emerald-500/10';
+  const okBorder = theme === 'tph' ? 'border-l-sky-500' : 'border-l-emerald-500';
 
-// ─────────────────────────────────────────────
-// Sub-componente: MetricCard compacta
-// Diseñada para columna estrecha (35%)
-// ─────────────────────────────────────────────
+  const STATUS_CONFIG: Record<
+    MetricStatus,
+    { borderColor: string; badgeBg: string; badgeText: string; label: string; dotColor: string }
+  > = {
+    ok: {
+      borderColor: okBorder,
+      badgeBg: okBadge,
+      badgeText: okText,
+      label: 'APT',
+      dotColor: theme === 'tph' ? 'bg-sky-400' : 'bg-emerald-400',
+    },
+    warning: {
+      borderColor: 'border-l-amber-400',
+      badgeBg: 'bg-amber-400/10',
+      badgeText: 'text-amber-400',
+      label: 'PRECAUCIÓN',
+      dotColor: 'bg-amber-400',
+    },
+    danger: {
+      borderColor: 'border-l-red-500',
+      badgeBg: 'bg-red-500/10',
+      badgeText: 'text-red-400',
+      label: 'NO APTA',
+      dotColor: 'bg-red-500',
+    },
+  };
 
-interface MetricCardProps {
-  title: string;
-  value: number;
-  unit: string;
-  status: MetricStatus;
-  idealRange: string;
-}
-
-const MetricCard: React.FC<MetricCardProps> = ({ title, value, unit, status, idealRange }) => {
   const cfg = STATUS_CONFIG[status];
   return (
     <View
@@ -118,21 +109,21 @@ interface ChartBarProps {
   maxTurbidity: number;
   isLast: boolean;
   threshold: number; // Umbral configurado por el usuario
+  theme: AppTheme;
 }
 
-const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, threshold }) => {
+const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, threshold, theme }) => {
   // Normalizar la turbidez al espacio de la barra (máx. 100% de altura)
   const heightPercent = maxTurbidity > 0
     ? Math.min((record.turbidity / maxTurbidity) * 100, 100)
     : 10;
 
-  // Color DINÁMICO basado en el umbral del usuario
-  // Verde: por debajo del límite (APT)
-  // Amarillo: hasta 4x el límite (PRECAUCIÓN)
-  // Rojo: más de 4x el límite (NO APTA)
+  // Color DINÁMICO basado en el tema
+  const okColor = theme === 'tph' ? '#0EA5E9' : '#10b981';
+
   const barColor =
     record.turbidity <= threshold
-      ? '#10b981'   // emerald-500
+      ? okColor
       : record.turbidity <= threshold * 4
       ? '#fbbf24'   // amber-400
       : '#ef4444';  // red-500
@@ -159,15 +150,18 @@ const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, thres
 interface TrendChartProps {
   data: HistoryRecord[];
   threshold: number; // Recibe el límite actual
+  theme: AppTheme;
 }
 
-const TrendChart: React.FC<TrendChartProps> = ({ data, threshold }) => {
+const TrendChart: React.FC<TrendChartProps> = ({ data, threshold, theme }) => {
   const maxTurbidity = data.length > 0
     ? Math.max(...data.map((r) => r.turbidity), threshold, 5)
     : 45;
 
   const lastRecord = data[data.length - 1];
   const firstRecord = data[0];
+
+  const okColor = theme === 'tph' ? 'bg-sky-500' : 'bg-emerald-500';
 
   return (
     <View className="flex-1">
@@ -178,7 +172,7 @@ const TrendChart: React.FC<TrendChartProps> = ({ data, threshold }) => {
         </Text>
         <View className="flex-row items-center gap-x-2">
           <View className="flex-row items-center">
-            <View className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />
+            <View className={`w-1.5 h-1.5 rounded-full ${okColor} mr-1`} />
             <Text className="text-zinc-600 text-[8px]">≤{threshold}</Text>
           </View>
           <View className="flex-row items-center">
@@ -204,6 +198,7 @@ const TrendChart: React.FC<TrendChartProps> = ({ data, threshold }) => {
               maxTurbidity={maxTurbidity}
               isLast={index === data.length - 1}
               threshold={threshold}
+              theme={theme}
             />
           ))}
         </View>
@@ -362,9 +357,17 @@ export const DashboardScreen: React.FC = () => {
     alertRanges,
     historyData,
     totalAlerts,
+    theme,
+    setTheme,
     connect,
     disconnect,
   } = useSensorStore();
+
+  // Colores según tema
+  const brandPrimary = theme === 'tph' ? '#0EA5E9' : '#10b981'; // Cyan-500 vs Emerald-500
+  const brandBg = theme === 'tph' ? 'bg-sky-500/10' : 'bg-emerald-500/10';
+  const brandText = theme === 'tph' ? 'text-sky-400' : 'text-emerald-400';
+  const brandBorder = theme === 'tph' ? 'border-sky-500/30' : 'border-emerald-500/30';
 
   // Iniciar simulación al montar, limpiar al desmontar
   useEffect(() => {
@@ -419,11 +422,6 @@ export const DashboardScreen: React.FC = () => {
       {/* ─── HEADER ─── */}
       <View className="flex-row items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800">
         <View className="flex-row items-center">
-          <Image
-            source={require('../assets/TPH_MonitorLogo.jpeg')}
-            className="w-10 h-10 rounded-lg mr-3"
-            resizeMode="contain"
-          />
           <View>
             <Text className="text-white text-xl font-bold tracking-tight">
               T.P.H Monitor
@@ -441,6 +439,19 @@ export const DashboardScreen: React.FC = () => {
             <Text className={`${healthColor} text-lg font-mono font-bold`}>{systemHealth}%</Text>
           </View>
         )}
+
+        {/* Selector de Tema (Botón de Logo) */}
+        <TouchableOpacity
+          onPress={() => setTheme(theme === 'industrial' ? 'tph' : 'industrial')}
+          className="mr-2"
+          activeOpacity={0.7}
+        >
+          <Image
+            source={require('../assets/TPH_MonitorLogo.jpeg')}
+            className={`w-10 h-10 rounded-lg ${theme === 'tph' ? 'border-2 border-sky-400' : ''}`}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
 
         {/* Indicador de estado compacto */}
         <View className="flex-row items-center bg-zinc-800/80 rounded-xl px-3 py-2 border border-zinc-700/30">
@@ -480,6 +491,7 @@ export const DashboardScreen: React.FC = () => {
                 unit=""
                 status={phStatus}
                 idealRange={`${alertRanges.ph.min}–${alertRanges.ph.max}`}
+                theme={theme}
               />
             </View>
             <View className="w-1/2 px-1.5">
@@ -489,6 +501,7 @@ export const DashboardScreen: React.FC = () => {
                 unit="g/cm³"
                 status={densityStatus}
                 idealRange={`${alertRanges.density.min}–${alertRanges.density.max}`}
+                theme={theme}
               />
             </View>
             <View className="w-full px-1.5">
@@ -498,6 +511,7 @@ export const DashboardScreen: React.FC = () => {
                 unit="NTU"
                 status={turbidityStatus}
                 idealRange={`≤ ${alertRanges.turbidity.max} NTU`}
+                theme={theme}
               />
             </View>
           </View>
@@ -509,12 +523,12 @@ export const DashboardScreen: React.FC = () => {
             className={`mt-2 py-3.5 rounded-2xl items-center border ${
               isConnected
                 ? 'border-red-500/30 bg-red-500/10'
-                : 'border-emerald-500/30 bg-emerald-500/10'
+                : `${brandBorder} ${brandBg}`
             }`}
           >
             <Text
               className={`text-xs font-bold uppercase tracking-widest ${
-                isConnected ? 'text-red-400' : 'text-emerald-400'
+                isConnected ? 'text-red-400' : brandText
               }`}
             >
               {isScanning ? 'Sincronizando...' : isConnected ? '⏹ Detener Monitoreo' : '▶ Iniciar Escaneo'}
@@ -541,7 +555,7 @@ export const DashboardScreen: React.FC = () => {
             {activeTab === 'monitor' && (
               <>
                 <View className="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 mb-4">
-                  <TrendChart data={historyData} threshold={alertRanges.turbidity.max} />
+                  <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
                 </View>
 
                 <View className="flex-row -mx-1.5 mb-4">

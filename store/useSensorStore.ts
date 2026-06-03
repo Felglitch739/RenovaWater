@@ -6,6 +6,7 @@ import { create } from 'zustand';
 
 /** Estado cualitativo de cada métrica */
 export type MetricStatus = 'ok' | 'warning' | 'danger';
+export type AppTheme = 'industrial' | 'tph';
 
 /** Un registro histórico de una muestra del sensor */
 export interface HistoryRecord {
@@ -69,6 +70,10 @@ interface SensorState {
   // --- Timestamp de inicio de sesión (para calcular tiempo operativo) ---
   sessionStart: Date | null,
   sessionStartTime: number | null,
+
+  // --- Configuración de App ---
+  theme: AppTheme;
+  setTheme: (theme: AppTheme) => void;
 
   // --- Acciones ---
   connect: () => void;
@@ -189,6 +194,9 @@ export const useSensorStore = create<SensorState>((set, get) => ({
   totalAlerts: 0,
   sessionStart: null,
   sessionStartTime: null,
+  theme: 'industrial',
+
+  setTheme: (theme: AppTheme) => set({ theme }),
 
   // ──────────────────────────────────────────
   // connect()
