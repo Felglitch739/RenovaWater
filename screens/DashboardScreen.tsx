@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
-  useWindowDimensions,
+  Image,
 } from 'react-native';
 import {
   useSensorStore,
@@ -418,13 +418,20 @@ export const DashboardScreen: React.FC = () => {
 
       {/* ─── HEADER ─── */}
       <View className="flex-row items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800">
-        <View>
-          <Text className="text-white text-xl font-bold tracking-tight">
-            InnovaTec
-          </Text>
-          <Text className="text-zinc-500 text-[9px] font-bold uppercase tracking-[2px]">
-            Water Quality Monitor
-          </Text>
+        <View className="flex-row items-center">
+          <Image
+            source={require('../assets/TPH_MonitorLogo.jpeg')}
+            className="w-10 h-10 rounded-lg mr-3"
+            resizeMode="contain"
+          />
+          <View>
+            <Text className="text-white text-xl font-bold tracking-tight">
+              T.P.H Monitor
+            </Text>
+            <Text className="text-zinc-500 text-[9px] font-bold uppercase tracking-[2px]">
+              Water Quality Monitor
+            </Text>
+          </View>
         </View>
 
         {/* Salud del Sistema (Nuevo) */}
