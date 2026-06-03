@@ -37,6 +37,7 @@ interface ReportBlockProps {
   unit?: string;
   sublabel?: string;
   valueColor?: string;
+  isDark: boolean;
 }
 
 const ReportBlock: React.FC<ReportBlockProps> = ({
@@ -44,23 +45,24 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
   value,
   unit,
   sublabel,
-  valueColor = 'text-white',
+  valueColor,
+  isDark,
 }) => (
-  <View className="w-full border border-zinc-700/60 rounded-xl p-3.5 mb-2 bg-zinc-800/40 flex-row items-center justify-between">
+  <View className={`w-full border ${isDark ? 'border-zinc-700/60 bg-zinc-800/40' : 'border-slate-200 bg-white'} rounded-xl p-3.5 mb-2 flex-row items-center justify-between shadow-sm`}>
     <View className="flex-1 mr-4">
-      <Text className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1 leading-tight">
+      <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 leading-tight font-bold`}>
         {label.replace('\n', ' ')}
       </Text>
       {sublabel ? (
-        <Text className="text-zinc-600 text-[10px] leading-tight flex-wrap">
+        <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] leading-tight flex-wrap font-medium`}>
           {sublabel}
         </Text>
       ) : null}
     </View>
     <View className="flex-row items-baseline">
-      <Text className={`${valueColor} text-2xl font-bold font-mono`}>{value}</Text>
+      <Text className={`${valueColor || (isDark ? 'text-white' : 'text-slate-900')} text-2xl font-bold font-mono`}>{value}</Text>
       {unit ? (
-        <Text className="text-zinc-600 text-[10px] ml-1.5 font-medium">{unit}</Text>
+        <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] ml-1.5 font-bold`}>{unit}</Text>
       ) : null}
     </View>
   </View>
@@ -70,11 +72,11 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
 // Sub-componente: Separador con etiqueta
 // ─────────────────────────────────────────────
 
-const SectionLabel: React.FC<{ label: string }> = ({ label }) => (
+const SectionLabel: React.FC<{ label: string; isDark: boolean }> = ({ label, isDark }) => (
   <View className="flex-row items-center mb-4 mt-5">
-    <View className="flex-1 h-px bg-zinc-800" />
-    <Text className="text-zinc-600 text-[10px] uppercase tracking-widest mx-3">{label}</Text>
-    <View className="flex-1 h-px bg-zinc-800" />
+    <View className={`flex-1 h-px ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
+    <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] uppercase tracking-widest mx-3 font-bold`}>{label}</Text>
+    <View className={`flex-1 h-px ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
   </View>
 );
 
@@ -83,8 +85,9 @@ const SectionLabel: React.FC<{ label: string }> = ({ label }) => (
 // ─────────────────────────────────────────────
 
 export const ReportsView: React.FC = () => {
-  const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected } =
+  const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected, theme } =
     useSensorStore();
+  const isDark = theme === 'dark';
 
   const [realTimeDuration, setRealTimeDuration] = useState<string>('--');
 
@@ -209,10 +212,10 @@ export const ReportsView: React.FC = () => {
     >
       {/* Cabecera del panel */}
       <View className="mb-4">
-        <Text className="text-zinc-300 text-sm font-semibold uppercase tracking-wider">
+        <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-bold uppercase tracking-wider`}>
           Informe de Turno
         </Text>
-        <Text className="text-zinc-600 text-[10px] mt-0.5">
+        <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-500'} text-[10px] mt-0.5 font-medium`}>
           {report.sampleCount > 0
             ? `Basado en ${report.sampleCount} muestras del período actual`
             : 'Sin datos suficientes · Conecte el sensor'}
@@ -220,68 +223,73 @@ export const ReportsView: React.FC = () => {
       </View>
 
       {/* ── Bloque 1: Resumen de pH ── */}
-      <SectionLabel label="Análisis de pH" />
+      <SectionLabel label="Análisis de pH" isDark={isDark} />
       <View className="flex-col">
         <ReportBlock
           label={'Promedio 24h'}
           value={report.avgPh}
           sublabel="Valor representativo del período"
+          isDark={isDark}
         />
         <ReportBlock
           label={'Mínimo'}
           value={report.minPh}
           sublabel="Valor más ácido detectado"
+          isDark={isDark}
           valueColor={
             report.minPh !== '--' && parseFloat(report.minPh) < 6.5
-              ? 'text-amber-400'
-              : 'text-white'
+              ? 'text-amber-500'
+              : undefined
           }
         />
         <ReportBlock
           label={'Máximo'}
           value={report.maxPh}
           sublabel="Valor más alcalino detectado"
+          isDark={isDark}
           valueColor={
             report.maxPh !== '--' && parseFloat(report.maxPh) > 8.5
-              ? 'text-amber-400'
-              : 'text-white'
+              ? 'text-amber-500'
+              : undefined
           }
         />
       </View>
 
       {/* ── Bloque 2: Turbidez y operación ── */}
-      <SectionLabel label="Calidad y operación" />
+      <SectionLabel label="Calidad y operación" isDark={isDark} />
       <View className="flex-col">
         <ReportBlock
           label={'Pico de turbidez'}
           value={report.peakTurbidity}
           unit="NTU"
           sublabel="Máximo detectado en el período"
+          isDark={isDark}
           valueColor={
             report.peakTurbidity !== '--' && parseFloat(report.peakTurbidity) > 5
-              ? 'text-red-400'
-              : 'text-white'
+              ? 'text-red-500'
+              : undefined
           }
         />
         <ReportBlock
           label={'Tiempo operativo'}
           value={realTimeDuration}
           sublabel={isConnected ? 'Sesión activa' : 'Sensor desconectado'}
-          valueColor="text-emerald-400"
+          isDark={isDark}
+          valueColor="text-sky-500"
         />
       </View>
 
       {/* ── Bloque 3: Resumen de alertas ── */}
-      <SectionLabel label="Alertas y Otros" />
-      <View className="border border-zinc-700/60 rounded-xl p-4 bg-zinc-800/40 mb-1 flex-row justify-between items-center">
+      <SectionLabel label="Alertas y Otros" isDark={isDark} />
+      <View className={`border ${isDark ? 'border-zinc-700/60 bg-zinc-800/40' : 'border-slate-200 bg-white shadow-sm'} rounded-xl p-4 mb-1 flex-row justify-between items-center`}>
         <View>
-          <Text className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1">
+          <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
             Total Alertas
           </Text>
           <View className="flex-row items-baseline">
             <Text
               className={`text-2xl font-bold font-mono ${
-                totalAlerts > 0 ? 'text-amber-400' : 'text-emerald-400'
+                totalAlerts > 0 ? 'text-amber-500' : 'text-sky-500'
               }`}
             >
               {totalAlerts}
@@ -290,10 +298,10 @@ export const ReportsView: React.FC = () => {
         </View>
 
         <View className="items-end">
-          <Text className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1">
+          <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
             Densidad prom.
           </Text>
-          <Text className="text-white text-lg font-bold font-mono">
+          <Text className={`${isDark ? 'text-white' : 'text-slate-900'} text-lg font-bold font-mono`}>
             {report.avgDensity}
           </Text>
         </View>
@@ -307,16 +315,16 @@ export const ReportsView: React.FC = () => {
           disabled={report.sampleCount === 0}
           className={`border rounded-2xl py-4 px-5 flex-row items-center justify-center ${
             report.sampleCount > 0
-              ? 'border-zinc-700 bg-zinc-800/60'
+              ? isDark ? 'border-zinc-700 bg-zinc-800/60' : 'border-slate-300 bg-slate-100 shadow-sm'
               : 'border-zinc-800 opacity-40'
           }`}
         >
-          <Text className="text-zinc-400 text-lg mr-3">📥</Text>
+          <Text className="text-sky-500 text-lg mr-3">📥</Text>
           <View>
-            <Text className="text-zinc-200 text-sm font-bold">
+            <Text className={`${isDark ? 'text-zinc-200' : 'text-slate-700'} text-sm font-bold`}>
               Exportar Reporte CSV
             </Text>
-            <Text className="text-zinc-500 text-[10px]">
+            <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] font-medium`}>
               Descargar historial de muestras
             </Text>
           </View>

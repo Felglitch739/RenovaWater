@@ -23,29 +23,31 @@ interface InputFieldProps {
   onChange: (val: string) => void;
   placeholder?: string;
   unit?: string;
+  isDark: boolean;
 }
 
-const InputField: React.FC<InputFieldProps> = ({ label, value, onChange, placeholder, unit }) => (
+const InputField: React.FC<InputFieldProps> = ({ label, value, onChange, placeholder, unit, isDark }) => (
   <View className="mb-4">
-    <Text className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-2 px-1">
+    <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] font-bold uppercase tracking-widest mb-2 px-1`}>
       {label}
     </Text>
-    <View className="flex-row items-center bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3">
+    <View className={`flex-row items-center ${isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-slate-50 border-slate-200'} border rounded-xl px-4 py-3 shadow-sm`}>
       <TextInput
-        className="flex-1 text-white font-mono text-base"
+        className={`flex-1 ${isDark ? 'text-white' : 'text-slate-900'} font-mono text-base`}
         value={value}
         onChangeText={onChange}
         keyboardType="numeric"
         placeholder={placeholder}
-        placeholderTextColor="#52525b"
+        placeholderTextColor={isDark ? "#52525b" : "#94a3b8"}
       />
-      {unit && <Text className="text-zinc-600 text-xs font-bold ml-2">{unit}</Text>}
+      {unit && <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-xs font-bold ml-2`}>{unit}</Text>}
     </View>
   </View>
 );
 
 export const ConfigModal: React.FC<ConfigModalProps> = ({ visible, onClose }) => {
-  const { alertRanges, updateAlertRanges } = useSensorStore();
+  const { alertRanges, updateAlertRanges, theme } = useSensorStore();
+  const isDark = theme === 'dark';
 
   // Estados locales para los inputs
   const [phMin, setPhMin] = useState(alertRanges.ph.min.toString());
@@ -87,34 +89,34 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ visible, onClose }) =>
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             className="w-full"
           >
-            <View className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl">
+            <View className={`${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'} border rounded-3xl p-6 shadow-2xl`}>
               {/* Header */}
               <View className="flex-row justify-between items-center mb-6">
                 <View>
-                  <Text className="text-white text-xl font-bold">Límites de Alerta</Text>
-                  <Text className="text-zinc-500 text-xs">Ajuste de umbrales industriales</Text>
+                  <Text className={`${isDark ? 'text-white' : 'text-slate-900'} text-xl font-bold`}>Límites de Alerta</Text>
+                  <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-xs font-medium`}>Ajuste de umbrales industriales</Text>
                 </View>
                 <TouchableOpacity onPress={onClose} className="p-2">
-                  <Text className="text-zinc-500 text-xl font-bold">✕</Text>
+                  <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-400'} text-xl font-bold`}>✕</Text>
                 </TouchableOpacity>
               </View>
 
               {/* Formulario */}
               <View className="flex-row flex-wrap -mx-2">
                 <View className="w-1/2 px-2">
-                  <InputField label="pH Mínimo" value={phMin} onChange={setPhMin} unit="pH" />
+                  <InputField label="pH Mínimo" value={phMin} onChange={setPhMin} unit="pH" isDark={isDark} />
                 </View>
                 <View className="w-1/2 px-2">
-                  <InputField label="pH Máximo" value={phMax} onChange={setPhMax} unit="pH" />
+                  <InputField label="pH Máximo" value={phMax} onChange={setPhMax} unit="pH" isDark={isDark} />
                 </View>
                 <View className="w-1/2 px-2">
-                  <InputField label="Dens. Mín" value={denMin} onChange={setDenMin} unit="g/cm³" />
+                  <InputField label="Dens. Mín" value={denMin} onChange={setDenMin} unit="g/cm³" isDark={isDark} />
                 </View>
                 <View className="w-1/2 px-2">
-                  <InputField label="Dens. Máx" value={denMax} onChange={setDenMax} unit="g/cm³" />
+                  <InputField label="Dens. Máx" value={denMax} onChange={setDenMax} unit="g/cm³" isDark={isDark} />
                 </View>
                 <View className="w-full px-2">
-                  <InputField label="Umbral Turbidez Máx" value={turMax} onChange={setTurMax} unit="NTU" />
+                  <InputField label="Umbral Turbidez Máx" value={turMax} onChange={setTurMax} unit="NTU" isDark={isDark} />
                 </View>
               </View>
 
@@ -122,15 +124,15 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({ visible, onClose }) =>
               <View className="flex-row mt-6 gap-x-3">
                 <TouchableOpacity
                   onPress={onClose}
-                  className="flex-1 py-4 rounded-2xl bg-zinc-800 border border-zinc-700 items-center"
+                  className={`flex-1 py-4 rounded-2xl ${isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-slate-100 border-slate-200'} border items-center shadow-sm`}
                 >
-                  <Text className="text-zinc-400 font-bold uppercase tracking-widest text-xs">Cancelar</Text>
+                  <Text className={`${isDark ? 'text-zinc-400' : 'text-slate-600'} font-bold uppercase tracking-widest text-xs`}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSave}
-                  className="flex-1 py-4 rounded-2xl bg-emerald-500 items-center"
+                  className="flex-1 py-4 rounded-2xl bg-sky-500 items-center shadow-md shadow-sky-500/20"
                 >
-                  <Text className="text-zinc-900 font-bold uppercase tracking-widest text-xs">Guardar Cambios</Text>
+                  <Text className="text-white font-bold uppercase tracking-widest text-xs">Guardar Cambios</Text>
                 </TouchableOpacity>
               </View>
             </View>

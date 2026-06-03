@@ -38,40 +38,40 @@ interface AlertRowProps {
   isFirst: boolean;
 }
 
-const AlertRow: React.FC<AlertRowProps> = ({ event, isFirst }) => {
+const AlertRow: React.FC<AlertRowProps & { isDark: boolean }> = ({ event, isFirst, isDark }) => {
   // TypeScript garantiza que status es 'warning' | 'danger' aquí
   const style = ALERT_STYLE[event.status as Exclude<MetricStatus, 'ok'>];
 
   return (
     <View
       className={`w-full flex-row items-center justify-between py-4 px-4 ${
-        !isFirst ? 'border-t border-zinc-800' : ''
+        !isFirst ? (isDark ? 'border-t border-zinc-800' : 'border-t border-slate-200') : ''
       }`}
     >
       {/* Lado Izquierdo: Icono + Hora */}
       <View className="flex-row items-center mr-3">
         <View className={`w-2 h-2 rounded-full mr-2.5 ${style.dot}`} />
-        <Text className="text-zinc-500 text-xs font-mono">
+        <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-400'} text-xs font-mono`}>
           {event.time}
         </Text>
       </View>
 
       {/* Centro: Parámetro + Descripción (con flex-wrap) */}
       <View className="flex-1 mr-3">
-        <Text className="text-zinc-200 text-sm font-semibold flex-wrap">
+        <Text className={`${isDark ? 'text-zinc-200' : 'text-slate-700'} text-sm font-semibold flex-wrap`}>
           {event.parameter}
           {event.unit ? (
-            <Text className="text-zinc-500 text-xs font-normal"> · {event.unit}</Text>
+            <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-400'} text-xs font-normal`}> · {event.unit}</Text>
           ) : null}
         </Text>
-        <Text className="text-zinc-500 text-[10px] mt-0.5 leading-tight flex-wrap">
+        <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-400'} text-[10px] mt-0.5 leading-tight flex-wrap`}>
           Detección fuera de rango
         </Text>
       </View>
 
       {/* Lado Derecho: Valor + Badge */}
       <View className="items-end">
-        <Text className="text-white text-base font-bold font-mono">
+        <Text className={`${isDark ? 'text-white' : 'text-slate-900'} text-base font-bold font-mono`}>
           {event.value}
         </Text>
         <View className={`mt-1 px-1.5 py-0.5 rounded ${style.badge}`}>
@@ -89,17 +89,18 @@ const AlertRow: React.FC<AlertRowProps> = ({ event, isFirst }) => {
 // ─────────────────────────────────────────────
 
 export const AlertsView: React.FC = () => {
-  const { alertLog, totalAlerts, clearAlertLog, isConnected } = useSensorStore();
+  const { alertLog, totalAlerts, clearAlertLog, isConnected, theme } = useSensorStore();
+  const isDark = theme === 'dark';
 
   return (
     <View className="flex-1">
       {/* Cabecera del panel */}
       <View className="flex-row justify-between items-baseline mb-4">
         <View>
-          <Text className="text-zinc-300 text-sm font-semibold uppercase tracking-wider">
+          <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-semibold uppercase tracking-wider`}>
             Log de Alertas
           </Text>
-          <Text className="text-zinc-600 text-xs mt-0.5">
+          <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-500'} text-xs mt-0.5`}>
             {totalAlerts > 0
               ? `${totalAlerts} evento${totalAlerts !== 1 ? 's' : ''} detectado${totalAlerts !== 1 ? 's' : ''} en sesión`
               : 'Sin eventos en la sesión actual'}
@@ -111,9 +112,9 @@ export const AlertsView: React.FC = () => {
           <TouchableOpacity
             onPress={clearAlertLog}
             activeOpacity={0.75}
-            className="border border-zinc-700 rounded-lg px-3 py-1.5"
+            className={`border ${isDark ? 'border-zinc-700' : 'border-slate-300'} rounded-lg px-3 py-1.5`}
           >
-            <Text className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
+            <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-xs font-semibold uppercase tracking-wider`}>
               Limpiar
             </Text>
           </TouchableOpacity>
@@ -124,13 +125,13 @@ export const AlertsView: React.FC = () => {
       {alertLog.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           {/* Icono visual minimalista */}
-          <View className="w-12 h-12 rounded-full border border-zinc-700 items-center justify-center mb-4">
+          <View className={`w-12 h-12 rounded-full border ${isDark ? 'border-zinc-700' : 'border-slate-200'} items-center justify-center mb-4`}>
             <Text className="text-emerald-400 text-xl">✓</Text>
           </View>
-          <Text className="text-zinc-400 text-sm font-semibold text-center">
+          <Text className={`${isDark ? 'text-zinc-400' : 'text-slate-600'} text-sm font-semibold text-center`}>
             Sistema operando bajo{'\n'}parámetros óptimos
           </Text>
-          <Text className="text-zinc-600 text-xs text-center mt-2">
+          <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-xs text-center mt-2`}>
             {isConnected
               ? 'Monitoreo activo · Sin anomalías detectadas'
               : 'Conecte el sensor para iniciar monitoreo'}
@@ -138,16 +139,16 @@ export const AlertsView: React.FC = () => {
         </View>
       ) : (
         <ScrollView
-          className="flex-1 bg-zinc-800/50 border border-zinc-700/50 rounded-xl"
+          className={`flex-1 ${isDark ? 'bg-zinc-800/50 border-zinc-700/50' : 'bg-white border-slate-200'} border rounded-xl`}
           showsVerticalScrollIndicator={false}
         >
           {alertLog.map((event, index) => (
-            <AlertRow key={event.id} event={event} isFirst={index === 0} />
+            <AlertRow key={event.id} event={event} isFirst={index === 0} isDark={isDark} />
           ))}
 
           {/* Footer con total */}
-          <View className="border-t border-zinc-700/50 py-3 px-4">
-            <Text className="text-zinc-600 text-xs text-center">
+          <View className={`border-t ${isDark ? 'border-zinc-700/50' : 'border-slate-100'} py-3 px-4`}>
+            <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-xs text-center`}>
               Mostrando {alertLog.length} evento{alertLog.length !== 1 ? 's' : ''} · Máx. 50 registros
             </Text>
           </View>

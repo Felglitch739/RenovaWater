@@ -4,16 +4,21 @@
     "slug": "tph-monitor",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/TPH_Monitor_Icon.png",
+    "icon": "./assets/TPH_MonitorLogo.png",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/TPH_MonitorLogo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#09090b"
+    },
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/TPH_Monitor_Icon.png"
+      "icon": "./assets/TPH_MonitorLogo.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#075985",
-        "foregroundImage": "./assets/TPH_Monitor_Icon.png"
+        "backgroundColor": "#09090b",
+        "foregroundImage": "./assets/TPH_MonitorLogo.png"
       },
       "predictiveBackGestureEnabled": false
     },

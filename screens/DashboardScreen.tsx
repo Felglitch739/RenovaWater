@@ -622,10 +622,10 @@ export const DashboardScreen: React.FC = () => {
             {activeTab === 'alertas' && <AlertsView />}
             {activeTab === 'informes' && <ReportsView />}
             {activeTab === 'ble' && (
-              <View className="items-center justify-center py-10 bg-zinc-800/20 rounded-3xl border border-zinc-800/50">
-                <Text className="text-zinc-500 text-3xl mb-4">⊕</Text>
-                <Text className="text-zinc-400 text-sm font-bold">Panel Bluetooth</Text>
-                <Text className="text-zinc-600 text-xs text-center mt-2 px-10">
+              <View className={`items-center justify-center py-10 ${isDark ? 'bg-zinc-800/20' : 'bg-white shadow-sm'} rounded-3xl border ${borderColor}`}>
+                <Text className="text-sky-500 text-3xl mb-4">⊕</Text>
+                <Text className={`${textColor} text-sm font-bold`}>Panel Bluetooth</Text>
+                <Text className={`${subTextColor} text-xs text-center mt-2 px-10 font-medium`}>
                   {isConnected
                     ? 'Sensor conectado vía BLE\nRecibiendo paquetes de datos...'
                     : 'Buscando dispositivos cercanos\nAsegúrese que el sensor esté encendido'}
