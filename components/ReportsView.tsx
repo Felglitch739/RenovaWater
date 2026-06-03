@@ -1,12 +1,15 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   Alert,
+  Platform,
 } from 'react-native';
 import { useSensorStore } from '../store/useSensorStore';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -17,9 +20,11 @@ const formatDuration = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-  return `${totalSeconds}s`;
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 };
 
 // ─────────────────────────────────────────────
@@ -41,19 +46,23 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
   sublabel,
   valueColor = 'text-white',
 }) => (
-  <View className="flex-1 border border-zinc-700/60 rounded-xl p-4 mx-1 bg-zinc-800/40">
-    <Text className="text-zinc-500 text-xs uppercase tracking-widest mb-3 leading-tight">
-      {label}
-    </Text>
-    <View className="flex-row items-baseline">
-      <Text className={`${valueColor} text-3xl font-bold font-mono`}>{value}</Text>
-      {unit ? (
-        <Text className="text-zinc-600 text-xs ml-1.5 font-medium">{unit}</Text>
+  <View className="w-full border border-zinc-700/60 rounded-xl p-3.5 mb-2 bg-zinc-800/40 flex-row items-center justify-between">
+    <View className="flex-1 mr-4">
+      <Text className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1 leading-tight">
+        {label.replace('\n', ' ')}
+      </Text>
+      {sublabel ? (
+        <Text className="text-zinc-600 text-[10px] leading-tight flex-wrap">
+          {sublabel}
+        </Text>
       ) : null}
     </View>
-    {sublabel ? (
-      <Text className="text-zinc-600 text-xs mt-2">{sublabel}</Text>
-    ) : null}
+    <View className="flex-row items-baseline">
+      <Text className={`${valueColor} text-2xl font-bold font-mono`}>{value}</Text>
+      {unit ? (
+        <Text className="text-zinc-600 text-[10px] ml-1.5 font-medium">{unit}</Text>
+      ) : null}
+    </View>
   </View>
 );
 
@@ -64,7 +73,7 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
 const SectionLabel: React.FC<{ label: string }> = ({ label }) => (
   <View className="flex-row items-center mb-4 mt-5">
     <View className="flex-1 h-px bg-zinc-800" />
-    <Text className="text-zinc-600 text-xs uppercase tracking-widest mx-3">{label}</Text>
+    <Text className="text-zinc-600 text-[10px] uppercase tracking-widest mx-3">{label}</Text>
     <View className="flex-1 h-px bg-zinc-800" />
   </View>
 );
@@ -74,8 +83,27 @@ const SectionLabel: React.FC<{ label: string }> = ({ label }) => (
 // ─────────────────────────────────────────────
 
 export const ReportsView: React.FC = () => {
-  const { historyData, alertLog, totalAlerts, sessionStart, isConnected } =
+  const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected } =
     useSensorStore();
+
+  const [realTimeDuration, setRealTimeDuration] = useState<string>('--');
+
+  // --- Timer en Tiempo Real ---
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+
+    if (isConnected && sessionStartTime) {
+      interval = setInterval(() => {
+        setRealTimeDuration(formatDuration(Date.now() - sessionStartTime));
+      }, 1000);
+    } else {
+      setRealTimeDuration('--');
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isConnected, sessionStartTime]);
 
   // ── Cálculo de estadísticas del período (memoizado) ──
   const report = useMemo(() => {
@@ -122,19 +150,55 @@ export const ReportsView: React.FC = () => {
     };
   }, [historyData, alertLog.length, totalAlerts]);
 
-  // ── Tiempo de operación estable desde el inicio de sesión ──
-  const operationTime = useMemo(() => {
-    if (!sessionStart) return '--';
-    return formatDuration(Date.now() - sessionStart.getTime());
-  }, [sessionStart]);
-
   // ── Handler del botón de exportar ──
-  const handleExport = () => {
-    Alert.alert(
-      'Reporte Generado',
-      'Reporte guardado localmente en /Documentos/Historial_Agua.csv',
-      [{ text: 'Aceptar', style: 'default' }],
-    );
+  const handleExport = async () => {
+    if (historyData.length === 0) return;
+
+    try {
+      // 1. Generar Contenido CSV
+      const header = "Hora,pH,Densidad (g/cm3),Turbidez (NTU)\n";
+      const rows = historyData.map(r =>
+        `${r.time},${r.ph},${r.density},${r.turbidity}`
+      ).join("\n");
+      const csvContent = header + rows;
+
+      // 2. Definir nombre del archivo
+      const fileName = `Reporte_Turno_${new Date().toISOString().split('T')[0]}.csv`;
+
+      if (Platform.OS === 'android') {
+        // En Android, podemos pedir permiso para guardar en una carpeta específica
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+
+        if (permissions.granted) {
+          // Crear el archivo en la carpeta elegida
+          const uri = await FileSystem.StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            'text/csv'
+          );
+
+          await FileSystem.writeAsStringAsync(uri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+          Alert.alert("Éxito", "Reporte guardado en el dispositivo");
+        } else {
+          // Si no dan permiso, usamos el método de compartir como respaldo
+          await fallbackShare(csvContent, fileName);
+        }
+      } else {
+        // iOS y otros: compartir es la forma estándar
+        await fallbackShare(csvContent, fileName);
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "No se pudo guardar el reporte");
+    }
+  };
+
+  const fallbackShare = async (content: string, fileName: string) => {
+    const fileUri = FileSystem.documentDirectory + fileName;
+    await FileSystem.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri);
+    }
   };
 
   return (
@@ -148,7 +212,7 @@ export const ReportsView: React.FC = () => {
         <Text className="text-zinc-300 text-sm font-semibold uppercase tracking-wider">
           Informe de Turno
         </Text>
-        <Text className="text-zinc-600 text-xs mt-0.5">
+        <Text className="text-zinc-600 text-[10px] mt-0.5">
           {report.sampleCount > 0
             ? `Basado en ${report.sampleCount} muestras del período actual`
             : 'Sin datos suficientes · Conecte el sensor'}
@@ -156,15 +220,15 @@ export const ReportsView: React.FC = () => {
       </View>
 
       {/* ── Bloque 1: Resumen de pH ── */}
-      <SectionLabel label="pH del período" />
-      <View className="flex-row -mx-1">
+      <SectionLabel label="Análisis de pH" />
+      <View className="flex-col">
         <ReportBlock
-          label={'Promedio\npH 24h'}
+          label={'Promedio 24h'}
           value={report.avgPh}
           sublabel="Valor representativo del período"
         />
         <ReportBlock
-          label={'Mínimo\nregistrado'}
+          label={'Mínimo'}
           value={report.minPh}
           sublabel="Valor más ácido detectado"
           valueColor={
@@ -174,7 +238,7 @@ export const ReportsView: React.FC = () => {
           }
         />
         <ReportBlock
-          label={'Máximo\nregistrado'}
+          label={'Máximo'}
           value={report.maxPh}
           sublabel="Valor más alcalino detectado"
           valueColor={
@@ -187,9 +251,9 @@ export const ReportsView: React.FC = () => {
 
       {/* ── Bloque 2: Turbidez y operación ── */}
       <SectionLabel label="Calidad y operación" />
-      <View className="flex-row -mx-1">
+      <View className="flex-col">
         <ReportBlock
-          label={'Pico\nturbidez'}
+          label={'Pico de turbidez'}
           value={report.peakTurbidity}
           unit="NTU"
           sublabel="Máximo detectado en el período"
@@ -200,76 +264,63 @@ export const ReportsView: React.FC = () => {
           }
         />
         <ReportBlock
-          label={'Tiempo\noperativo'}
-          value={operationTime}
-          sublabel={isConnected ? 'Sesión activa en curso' : 'Sesión finalizada'}
+          label={'Tiempo operativo'}
+          value={realTimeDuration}
+          sublabel={isConnected ? 'Sesión activa' : 'Sensor desconectado'}
           valueColor="text-emerald-400"
         />
       </View>
 
       {/* ── Bloque 3: Resumen de alertas ── */}
-      <SectionLabel label="Alertas del período" />
-      <View className="border border-zinc-700/60 rounded-xl p-4 bg-zinc-800/40 mb-1">
-        <View className="flex-row justify-between items-center">
-          <View>
-            <Text className="text-zinc-500 text-xs uppercase tracking-widest mb-1">
-              Total de eventos fuera de rango
+      <SectionLabel label="Alertas y Otros" />
+      <View className="border border-zinc-700/60 rounded-xl p-4 bg-zinc-800/40 mb-1 flex-row justify-between items-center">
+        <View>
+          <Text className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1">
+            Total Alertas
+          </Text>
+          <View className="flex-row items-baseline">
+            <Text
+              className={`text-2xl font-bold font-mono ${
+                totalAlerts > 0 ? 'text-amber-400' : 'text-emerald-400'
+              }`}
+            >
+              {totalAlerts}
             </Text>
-            <View className="flex-row items-baseline">
-              <Text
-                className={`text-3xl font-bold font-mono ${
-                  totalAlerts > 0 ? 'text-amber-400' : 'text-emerald-400'
-                }`}
-              >
-                {totalAlerts}
-              </Text>
-              <Text className="text-zinc-600 text-xs ml-2">
-                {totalAlerts === 1 ? 'evento' : 'eventos'}
-              </Text>
-            </View>
           </View>
+        </View>
 
-          <View className="items-end">
-            <Text className="text-zinc-500 text-xs uppercase tracking-widest mb-1">
-              Densidad prom.
-            </Text>
-            <Text className="text-white text-xl font-bold font-mono">
-              {report.avgDensity}
-            </Text>
-            <Text className="text-zinc-600 text-xs">g/cm³</Text>
-          </View>
+        <View className="items-end">
+          <Text className="text-zinc-500 text-[10px] uppercase tracking-widest mb-1">
+            Densidad prom.
+          </Text>
+          <Text className="text-white text-lg font-bold font-mono">
+            {report.avgDensity}
+          </Text>
         </View>
       </View>
 
       {/* ── Botón de exportar ── */}
-      <View className="mt-5">
+      <View className="mt-5 mb-5">
         <TouchableOpacity
           onPress={handleExport}
           activeOpacity={0.8}
           disabled={report.sampleCount === 0}
-          className={`border rounded-xl py-4 px-5 flex-row items-center justify-center ${
+          className={`border rounded-2xl py-4 px-5 flex-row items-center justify-center ${
             report.sampleCount > 0
-              ? 'border-zinc-600 bg-zinc-800/60'
+              ? 'border-zinc-700 bg-zinc-800/60'
               : 'border-zinc-800 opacity-40'
           }`}
         >
-          {/* Icono decorativo */}
-          <Text className="text-zinc-400 text-lg mr-3">↓</Text>
+          <Text className="text-zinc-400 text-lg mr-3">📥</Text>
           <View>
-            <Text className="text-zinc-200 text-sm font-semibold">
-              Exportar Reporte de Calidad
+            <Text className="text-zinc-200 text-sm font-bold">
+              Exportar Reporte CSV
             </Text>
-            <Text className="text-zinc-500 text-xs mt-0.5">
-              /Documentos/Historial_Agua.csv
+            <Text className="text-zinc-500 text-[10px]">
+              Descargar historial de muestras
             </Text>
           </View>
         </TouchableOpacity>
-
-        {report.sampleCount === 0 && (
-          <Text className="text-zinc-600 text-xs text-center mt-2">
-            Requiere al menos una muestra del sensor
-          </Text>
-        )}
       </View>
     </ScrollView>
   );

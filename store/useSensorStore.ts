@@ -67,7 +67,8 @@ interface SensorState {
   totalAlerts: number;
 
   // --- Timestamp de inicio de sesión (para calcular tiempo operativo) ---
-  sessionStart: Date | null;
+  sessionStart: Date | null,
+  sessionStartTime: number | null,
 
   // --- Acciones ---
   connect: () => void;
@@ -187,6 +188,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
   alertLog: [],
   totalAlerts: 0,
   sessionStart: null,
+  sessionStartTime: null,
 
   // ──────────────────────────────────────────
   // connect()
@@ -205,7 +207,8 @@ export const useSensorStore = create<SensorState>((set, get) => ({
     // Simular el handshake Bluetooth (~1.5s)
     const handshakeTimer = setTimeout(() => {
       // Registrar el inicio de la sesión
-      set({ sessionStart: new Date() });
+      const startTime = Date.now();
+      set({ sessionStart: new Date(startTime), sessionStartTime: startTime });
 
       const id = setInterval(() => {
         const now = new Date();
@@ -312,6 +315,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
       intervalId: null,
       lastUpdated: null,
       sessionStart: null,
+      sessionStartTime: null,
       // Resetear lecturas al estado inicial
       ph: 7.0,
       density: 1.0,

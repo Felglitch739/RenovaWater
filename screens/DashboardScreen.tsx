@@ -18,6 +18,7 @@ import {
 } from '../store/useSensorStore';
 import { AlertsView } from '../components/AlertsView';
 import { ReportsView } from '../components/ReportsView';
+import { ConfigModal } from '../components/ConfigModal';
 
 // ─────────────────────────────────────────────
 // Tipos internos
@@ -116,19 +117,23 @@ interface ChartBarProps {
   record: HistoryRecord;
   maxTurbidity: number;
   isLast: boolean;
+  threshold: number; // Umbral configurado por el usuario
 }
 
-const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast }) => {
-  // Normalizar la turbidez al espacio de la barra (máx. 80% de altura)
+const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, threshold }) => {
+  // Normalizar la turbidez al espacio de la barra (máx. 100% de altura)
   const heightPercent = maxTurbidity > 0
     ? Math.min((record.turbidity / maxTurbidity) * 100, 100)
     : 10;
 
-  // Color de la barra según nivel de turbidez
+  // Color DINÁMICO basado en el umbral del usuario
+  // Verde: por debajo del límite (APT)
+  // Amarillo: hasta 4x el límite (PRECAUCIÓN)
+  // Rojo: más de 4x el límite (NO APTA)
   const barColor =
-    record.turbidity <= 5
+    record.turbidity <= threshold
       ? '#10b981'   // emerald-500
-      : record.turbidity <= 20
+      : record.turbidity <= threshold * 4
       ? '#fbbf24'   // amber-400
       : '#ef4444';  // red-500
 
@@ -153,11 +158,12 @@ const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast }) => 
 
 interface TrendChartProps {
   data: HistoryRecord[];
+  threshold: number; // Recibe el límite actual
 }
 
-const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
+const TrendChart: React.FC<TrendChartProps> = ({ data, threshold }) => {
   const maxTurbidity = data.length > 0
-    ? Math.max(...data.map((r) => r.turbidity), 5)
+    ? Math.max(...data.map((r) => r.turbidity), threshold, 5)
     : 45;
 
   const lastRecord = data[data.length - 1];
@@ -167,21 +173,17 @@ const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
     <View className="flex-1">
       {/* Título de la gráfica + leyenda */}
       <View className="flex-row justify-between items-baseline mb-3">
-        <Text className="text-zinc-300 text-sm font-semibold uppercase tracking-wider">
-          Turbidez · Tendencia
+        <Text className="text-zinc-300 text-[10px] font-bold uppercase tracking-wider">
+          Tendencia Turbidez
         </Text>
-        <View className="flex-row items-center gap-x-3">
+        <View className="flex-row items-center gap-x-2">
           <View className="flex-row items-center">
-            <View className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5" />
-            <Text className="text-zinc-500 text-xs">≤5 NTU</Text>
+            <View className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1" />
+            <Text className="text-zinc-600 text-[8px]">≤{threshold}</Text>
           </View>
           <View className="flex-row items-center">
-            <View className="w-2 h-2 rounded-full bg-amber-400 mr-1.5" />
-            <Text className="text-zinc-500 text-xs">≤20</Text>
-          </View>
-          <View className="flex-row items-center">
-            <View className="w-2 h-2 rounded-full bg-red-500 mr-1.5" />
-            <Text className="text-zinc-500 text-xs">&gt;20</Text>
+            <View className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />
+            <Text className="text-zinc-600 text-[8px]">≤{threshold * 4}</Text>
           </View>
         </View>
       </View>
@@ -189,28 +191,29 @@ const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
       {/* Área de barras */}
       {data.length === 0 ? (
         <View className="flex-1 items-center justify-center">
-          <Text className="text-zinc-600 text-xs uppercase tracking-widest">
+          <Text className="text-zinc-600 text-[9px] uppercase tracking-widest">
             Sin datos · Conectar sensor
           </Text>
         </View>
       ) : (
-        <View className="flex-1 flex-row items-end border-b border-zinc-700">
+        <View className="flex-1 flex-row items-end border-b border-zinc-700/50 pb-1">
           {data.map((record, index) => (
             <ChartBar
               key={`${record.time}-${index}`}
               record={record}
               maxTurbidity={maxTurbidity}
               isLast={index === data.length - 1}
+              threshold={threshold}
             />
           ))}
         </View>
       )}
 
-      {/* Etiquetas de tiempo: solo primera y última muestra */}
+      {/* Etiquetas de tiempo */}
       {data.length > 1 && (
-        <View className="flex-row justify-between mt-1.5">
-          <Text className="text-zinc-600 text-xs font-mono">{firstRecord?.time}</Text>
-          <Text className="text-zinc-400 text-xs font-mono">{lastRecord?.time} ←</Text>
+        <View className="flex-row justify-between mt-1">
+          <Text className="text-zinc-600 text-[8px] font-mono">{firstRecord?.time}</Text>
+          <Text className="text-zinc-400 text-[8px] font-mono">{lastRecord?.time} ←</Text>
         </View>
       )}
     </View>
@@ -347,6 +350,7 @@ const formatTimestamp = (date: Date | null): string => {
 
 export const DashboardScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('monitor');
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   const {
     ph,
@@ -399,6 +403,15 @@ export const DashboardScreen: React.FC = () => {
     ? 'Sensor activo'
     : 'Sin conexión';
 
+  // Calcular Salud del Sistema (0-100) basado en alertas/historial
+  const systemHealth = useMemo(() => {
+    if (!isConnected || historyData.length === 0) return 100;
+    const alertRatio = totalAlerts / (historyData.length * 3); // 3 parámetros por muestra
+    return Math.max(0, Math.round((1 - alertRatio) * 100));
+  }, [isConnected, historyData.length, totalAlerts]);
+
+  const healthColor = systemHealth > 90 ? 'text-emerald-400' : systemHealth > 70 ? 'text-amber-400' : 'text-red-400';
+
   return (
     <SafeAreaView className="flex-1 bg-zinc-900">
       <StatusBar barStyle="light-content" backgroundColor="#09090b" />
@@ -407,170 +420,187 @@ export const DashboardScreen: React.FC = () => {
       <View className="flex-row items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800">
         <View>
           <Text className="text-white text-xl font-bold tracking-tight">
-            InnovaTec · Monitor
+            InnovaTec
           </Text>
-          <Text className="text-zinc-500 text-xs font-medium uppercase tracking-widest">
-            Calidad del Agua Industrial
+          <Text className="text-zinc-500 text-[9px] font-bold uppercase tracking-[2px]">
+            Water Quality Monitor
           </Text>
         </View>
 
+        {/* Salud del Sistema (Nuevo) */}
+        {isConnected && (
+          <View className="items-end mr-4">
+            <Text className="text-zinc-600 text-[8px] font-bold uppercase">Estado</Text>
+            <Text className={`${healthColor} text-lg font-mono font-bold`}>{systemHealth}%</Text>
+          </View>
+        )}
+
         {/* Indicador de estado compacto */}
-        <View className="flex-row items-center bg-zinc-800 rounded-lg px-3 py-2">
+        <View className="flex-row items-center bg-zinc-800/80 rounded-xl px-3 py-2 border border-zinc-700/30">
           <View className={`w-2 h-2 rounded-full mr-2 ${connDotColor}`} />
           <View>
-            <Text className="text-zinc-300 text-xs font-semibold">{connLabel}</Text>
-            <Text className="text-zinc-600 text-xs font-mono">
+            <Text className="text-zinc-300 text-[10px] font-bold">{connLabel}</Text>
+            <Text className="text-zinc-600 text-[10px] font-mono">
               {formatTimestamp(lastUpdated)}
             </Text>
           </View>
         </View>
       </View>
 
-      {/* ─── BODY: DOS COLUMNAS ─── */}
-      <View className="flex-1 flex-row px-3 pt-4">
+      {/* ─── BODY: ENFOQUE MÓVIL (VERTICAL) ─── */}
+      <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
 
-        {/* ── COLUMNA IZQUIERDA (35%) · Métricas actuales ── */}
-        <View className="w-5/12 pr-2">
-          <Text className="text-zinc-600 text-xs font-semibold uppercase tracking-widest mb-3 px-1">
-            Lecturas actuales
-          </Text>
+        {/* ── SECCIÓN 1: MÉTRICAS ACTUALES ── */}
+        <View className="mb-6">
+          <View className="flex-row justify-between items-center mb-3 px-1">
+            <Text className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest">
+              Lecturas en Tiempo Real
+            </Text>
+            {isConnected && (
+              <View className="flex-row items-center bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                <View className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5" />
+                <Text className="text-emerald-400 text-[9px] font-bold">FLUJO ESTABLE</Text>
+              </View>
+            )}
+          </View>
 
-          <MetricCard
-            title="pH"
-            value={ph}
-            unit=""
-            status={phStatus}
-            idealRange={`${alertRanges.ph.min}–${alertRanges.ph.max}`}
-          />
-          <MetricCard
-            title="Densidad"
-            value={density}
-            unit="g/cm³"
-            status={densityStatus}
-            idealRange={`${alertRanges.density.min}–${alertRanges.density.max}`}
-          />
-          <MetricCard
-            title="Turbidez"
-            value={turbidity}
-            unit="NTU"
-            status={turbidityStatus}
-            idealRange={`≤ ${alertRanges.turbidity.max} NTU`}
-          />
+          {/* Grid de Métricas: 2 columnas para mobile */}
+          <View className="flex-row flex-wrap -mx-1.5">
+            <View className="w-1/2 px-1.5">
+              <MetricCard
+                title="pH"
+                value={ph}
+                unit=""
+                status={phStatus}
+                idealRange={`${alertRanges.ph.min}–${alertRanges.ph.max}`}
+              />
+            </View>
+            <View className="w-1/2 px-1.5">
+              <MetricCard
+                title="Densidad"
+                value={density}
+                unit="g/cm³"
+                status={densityStatus}
+                idealRange={`${alertRanges.density.min}–${alertRanges.density.max}`}
+              />
+            </View>
+            <View className="w-full px-1.5">
+              <MetricCard
+                title="Turbidez"
+                value={turbidity}
+                unit="NTU"
+                status={turbidityStatus}
+                idealRange={`≤ ${alertRanges.turbidity.max} NTU`}
+              />
+            </View>
+          </View>
 
-          {/* Botón de simulación (dev) */}
+          {/* Botón de acción principal (BLE/Simular) */}
           <TouchableOpacity
             onPress={isConnected ? disconnect : connect}
             activeOpacity={0.75}
-            className={`mt-2 py-3 rounded-xl items-center border ${
+            className={`mt-2 py-3.5 rounded-2xl items-center border ${
               isConnected
-                ? 'border-red-500/30 bg-red-500/5'
-                : 'border-emerald-500/30 bg-emerald-500/5'
+                ? 'border-red-500/30 bg-red-500/10'
+                : 'border-emerald-500/30 bg-emerald-500/10'
             }`}
           >
             <Text
-              className={`text-xs font-bold uppercase tracking-wider ${
+              className={`text-xs font-bold uppercase tracking-widest ${
                 isConnected ? 'text-red-400' : 'text-emerald-400'
               }`}
             >
-              {isConnected ? '⏹ Detener' : '▶ Simular'}
+              {isScanning ? 'Sincronizando...' : isConnected ? '⏹ Detener Monitoreo' : '▶ Iniciar Escaneo'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── COLUMNA DERECHA (65%) · Vista condicional por pestaña activa ── */}
-        <View className="flex-1 pl-2">
-
-          {/* Sub-header del panel derecho */}
-          <View className="mb-3">
-            <Text className="text-zinc-300 text-sm font-semibold">
-              {RIGHT_PANEL_HEADER[activeTab].title}
-            </Text>
-            <Text className="text-zinc-600 text-xs mt-0.5">
-              {RIGHT_PANEL_HEADER[activeTab].sub}
-            </Text>
-          </View>
-
-          {/* ── MONITOR: Gráfica + stats + acciones ── */}
-          {activeTab === 'monitor' && (
-            <>
-              {/* Panel de gráfica */}
-              <View className="flex-1 bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 mb-3">
-                <TrendChart data={historyData} />
-              </View>
-
-              {/* Micro-tarjetas de estadísticas */}
-              <View className="flex-row mb-3 -mx-1">
-                <StatCard
-                  label="Prom. pH 24h"
-                  value={stats.avgPh}
-                  accent={stats.avgPh === '--' ? 'text-zinc-600' : 'text-white'}
-                />
-                <StatCard
-                  label="Pico Turbidez"
-                  value={stats.peakTurbidity}
-                  unit="NTU"
-                  accent={
-                    stats.peakTurbidity === '--'
-                      ? 'text-zinc-600'
-                      : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
-                      ? 'text-red-400'
-                      : 'text-white'
-                  }
-                />
-                <StatCard
-                  label="Alertas 24h"
-                  value={stats.alerts}
-                  accent={totalAlerts > 0 ? 'text-amber-400' : 'text-white'}
-                />
-              </View>
-
-              {/* Botones de acción utilitarios */}
-              <View className="flex-row -mx-1">
-                <ActionButton
-                  icon="⚙"
-                  label="Configurar Rangos"
-                  onPress={() => setActiveTab('alertas')}
-                />
-                <ActionButton
-                  icon="≡"
-                  label="Ver Registro"
-                  onPress={() => setActiveTab('informes')}
-                />
-              </View>
-            </>
-          )}
-
-          {/* ── ALERTAS: Feed de eventos ── */}
-          {activeTab === 'alertas' && <AlertsView />}
-
-          {/* ── INFORMES: Resumen analítico ── */}
-          {activeTab === 'informes' && <ReportsView />}
-
-          {/* ── BLE: Placeholder (futuro) ── */}
-          {activeTab === 'ble' && (
-            <View className="flex-1 items-center justify-center">
-              <View className="w-14 h-14 rounded-full border border-zinc-700 items-center justify-center mb-4">
-                <Text className="text-zinc-500 text-2xl">⊕</Text>
-              </View>
-              <Text className="text-zinc-400 text-sm font-semibold text-center">
-                Bluetooth BLE
+        {/* ── SECCIÓN 2: VISTA DETALLADA (TABS) ── */}
+        <View className="flex-1 pb-10">
+          <View className="flex-row items-center mb-4">
+            <View className="w-1 h-4 bg-zinc-500 rounded-full mr-3" />
+            <View>
+              <Text className="text-zinc-300 text-sm font-bold">
+                {RIGHT_PANEL_HEADER[activeTab].title}
               </Text>
-              <Text className="text-zinc-600 text-xs text-center mt-2">
-                {isConnected
-                  ? 'Sensor simulado conectado\nEscaneo de dispositivos activo'
-                  : 'Sin dispositivos emparejados\nPresione ▶ Simular para conectar'}
+              <Text className="text-zinc-600 text-[10px]">
+                {RIGHT_PANEL_HEADER[activeTab].sub}
               </Text>
             </View>
-          )}
+          </View>
+
+          {/* Contenido dinámico */}
+          <View className="min-h-[300px]">
+            {activeTab === 'monitor' && (
+              <>
+                <View className="bg-zinc-800/40 border border-zinc-700/50 rounded-2xl p-4 mb-4">
+                  <TrendChart data={historyData} threshold={alertRanges.turbidity.max} />
+                </View>
+
+                <View className="flex-row -mx-1.5 mb-4">
+                  <StatCard
+                    label="Prom. pH"
+                    value={stats.avgPh}
+                    accent={stats.avgPh === '--' ? 'text-zinc-600' : 'text-white'}
+                  />
+                  <StatCard
+                    label="Pico Tur."
+                    value={stats.peakTurbidity}
+                    unit="NTU"
+                    accent={
+                      stats.peakTurbidity === '--'
+                        ? 'text-zinc-600'
+                        : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
+                        ? 'text-red-400'
+                        : 'text-white'
+                    }
+                  />
+                </View>
+
+                <View className="flex-row -mx-1">
+                  <ActionButton
+                    icon="⚙"
+                    label="Límites"
+                    onPress={() => setIsConfigOpen(true)}
+                  />
+                  <ActionButton
+                    icon="≡"
+                    label="Historial"
+                    onPress={() => setActiveTab('informes')}
+                  />
+                </View>
+              </>
+            )}
+
+            {activeTab === 'alertas' && <AlertsView />}
+            {activeTab === 'informes' && <ReportsView />}
+            {activeTab === 'ble' && (
+              <View className="items-center justify-center py-10 bg-zinc-800/20 rounded-3xl border border-zinc-800/50">
+                <Text className="text-zinc-500 text-3xl mb-4">⊕</Text>
+                <Text className="text-zinc-400 text-sm font-bold">Panel Bluetooth</Text>
+                <Text className="text-zinc-600 text-xs text-center mt-2 px-10">
+                  {isConnected
+                    ? 'Sensor conectado vía BLE\nRecibiendo paquetes de datos...'
+                    : 'Buscando dispositivos cercanos\nAsegúrese que el sensor esté encendido'}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
-      </View>
+      </ScrollView>
 
       {/* ─── BARRA DE NAVEGACIÓN INFERIOR ─── */}
       <BottomNav
         active={activeTab}
         onSelect={setActiveTab}
         isConnected={isConnected}
+      />
+
+      {/* ─── MODALES ─── */}
+      <ConfigModal
+        visible={isConfigOpen}
+        onClose={() => setIsConfigOpen(false)}
       />
     </SafeAreaView>
   );

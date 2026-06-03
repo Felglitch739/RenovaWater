@@ -44,38 +44,38 @@ const AlertRow: React.FC<AlertRowProps> = ({ event, isFirst }) => {
 
   return (
     <View
-      className={`flex-row items-center py-3.5 px-4 ${
+      className={`w-full flex-row items-center justify-between py-4 px-4 ${
         !isFirst ? 'border-t border-zinc-800' : ''
       }`}
     >
-      {/* Indicador de severidad */}
-      <View className={`w-2 h-2 rounded-full mr-3 flex-shrink-0 ${style.dot}`} />
+      {/* Lado Izquierdo: Icono + Hora */}
+      <View className="flex-row items-center mr-3">
+        <View className={`w-2 h-2 rounded-full mr-2.5 ${style.dot}`} />
+        <Text className="text-zinc-500 text-xs font-mono">
+          {event.time}
+        </Text>
+      </View>
 
-      {/* Timestamp */}
-      <Text className="text-zinc-500 text-xs font-mono w-16 flex-shrink-0">
-        {event.time}
-      </Text>
-
-      {/* Parámetro + descripción */}
-      <View className="flex-1 mx-3">
-        <Text className="text-zinc-200 text-sm font-semibold">
+      {/* Centro: Parámetro + Descripción (con flex-wrap) */}
+      <View className="flex-1 mr-3">
+        <Text className="text-zinc-200 text-sm font-semibold flex-wrap">
           {event.parameter}
           {event.unit ? (
             <Text className="text-zinc-500 text-xs font-normal"> · {event.unit}</Text>
           ) : null}
         </Text>
-        <Text className="text-zinc-500 text-xs mt-0.5">
-          Valor detectado fuera del rango configurado
+        <Text className="text-zinc-500 text-[10px] mt-0.5 leading-tight flex-wrap">
+          Detección fuera de rango
         </Text>
       </View>
 
-      {/* Valor detectado + badge */}
-      <View className="items-end flex-shrink-0">
+      {/* Lado Derecho: Valor + Badge */}
+      <View className="items-end">
         <Text className="text-white text-base font-bold font-mono">
           {event.value}
         </Text>
-        <View className={`mt-1 px-2 py-0.5 rounded ${style.badge}`}>
-          <Text className={`text-xs font-bold ${style.badgeText}`}>
+        <View className={`mt-1 px-1.5 py-0.5 rounded ${style.badge}`}>
+          <Text className={`text-[9px] font-bold ${style.badgeText}`}>
             {style.label}
           </Text>
         </View>
