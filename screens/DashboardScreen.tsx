@@ -175,6 +175,47 @@ const TrendChart: React.FC<TrendChartProps> = ({ data, threshold, theme }) => {
   const legendColor = isDark ? 'text-zinc-600' : 'text-slate-400';
   const axisColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
 
+  return (
+    <View className="flex-1">
+      {/* Título de la gráfica + leyenda */}
+      <View className="flex-row justify-between items-baseline mb-3">
+        <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-[10px] font-bold uppercase tracking-wider`}>
+          Tendencia Turbidez
+        </Text>
+        <View className="flex-row items-center gap-x-2">
+          <View className="flex-row items-center">
+            <View className={`w-1.5 h-1.5 rounded-full ${okColor} mr-1`} />
+            <Text className={`${legendColor} text-[8px]`}>≤{threshold}</Text>
+          </View>
+          <View className="flex-row items-center">
+            <View className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />
+            <Text className={`${legendColor} text-[8px]`}>≤{threshold * 4}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Área de barras */}
+      {data.length === 0 ? (
+        <View className="flex-1 items-center justify-center">
+          <Text className={`${legendColor} text-[9px] uppercase tracking-widest`}>
+            Sin datos · Conectar sensor
+          </Text>
+        </View>
+      ) : (
+        <View className={`flex-1 flex-row items-end border-b ${axisColor} pb-1`}>
+          {data.map((record, index) => (
+            <ChartBar
+              key={`${record.time}-${index}`}
+              record={record}
+              maxTurbidity={maxTurbidity}
+              isLast={index === data.length - 1}
+              threshold={threshold}
+              theme={theme}
+            />
+          ))}
+        </View>
+      )}
+
       {/* Etiquetas de tiempo */}
       {data.length > 1 && (
         <View className="flex-row justify-between mt-1">
