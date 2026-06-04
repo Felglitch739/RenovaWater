@@ -8,7 +8,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSensorStore } from '../store/useSensorStore';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 // ─────────────────────────────────────────────

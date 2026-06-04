@@ -378,27 +378,26 @@ export const DashboardScreen: React.FC = () => {
     disconnect,
   } = useSensorStore();
 
-  // Colores según tema (Inspirados en el Logo TPH: Azules y Cianes)
+  // Colores según tema (Inspirados en el Logo TPH y Estilo Industrial HMI)
   const isDark = theme === 'dark';
+  const isIndustrial = theme === 'industrial';
 
-  // Paleta TPH
-  const tphBlue = '#075985'; // sky-800
+  // Paleta TPH e Industrial Slate
   const tphCyan = '#0EA5E9'; // sky-500
-  const tphLightBlue = '#E0F2FE'; // sky-100
 
-  const brandPrimary = tphCyan;
-  const brandBg = isDark ? 'bg-sky-500/10' : 'bg-sky-500/5';
-  const brandText = isDark ? 'text-sky-400' : 'text-sky-600';
-  const brandBorder = isDark ? 'border-sky-500/30' : 'border-sky-200';
+  const brandPrimary = isIndustrial ? '#64748b' : tphCyan;
+  const brandBg = isIndustrial ? 'bg-slate-500/10' : isDark ? 'bg-sky-500/10' : 'bg-sky-500/5';
+  const brandText = isIndustrial ? 'text-slate-400' : isDark ? 'text-sky-400' : 'text-sky-600';
+  const brandBorder = isIndustrial ? 'border-slate-500/30' : isDark ? 'border-sky-500/30' : 'border-sky-200';
 
-  const bgColor = isDark ? 'bg-zinc-900' : 'bg-slate-100'; // Un gris más claro pero con contraste
-  const cardColor = isDark ? 'bg-zinc-800/80' : 'bg-white';
-  const borderColor = isDark ? 'border-zinc-700/50' : 'border-slate-300'; // Borde más marcado en claro
-  const textColor = isDark ? 'text-white' : 'text-slate-900';
-  const subTextColor = isDark ? 'text-zinc-500' : 'text-slate-600'; // Texto más oscuro en claro
-  const headerBorder = isDark ? 'border-zinc-800' : 'border-slate-300';
-  const navBg = isDark ? 'bg-zinc-900' : 'bg-white';
-  const navBorder = isDark ? 'border-zinc-800' : 'border-slate-300';
+  const bgColor = isIndustrial ? 'bg-[#1a202c]' : isDark ? 'bg-zinc-900' : 'bg-slate-100';
+  const cardColor = isIndustrial ? 'bg-[#2d3748]/50' : isDark ? 'bg-zinc-800/80' : 'bg-white';
+  const borderColor = isIndustrial ? 'border-slate-700' : isDark ? 'border-zinc-700/50' : 'border-slate-300';
+  const textColor = isDark || isIndustrial ? 'text-white' : 'text-slate-900';
+  const subTextColor = isIndustrial ? 'text-slate-400' : isDark ? 'text-zinc-500' : 'text-slate-600';
+  const headerBorder = isIndustrial ? 'border-slate-800' : isDark ? 'border-zinc-800' : 'border-slate-300';
+  const navBg = isIndustrial ? 'bg-[#1a202c]' : isDark ? 'bg-zinc-900' : 'bg-white';
+  const navBorder = isIndustrial ? 'border-slate-800' : isDark ? 'border-zinc-800' : 'border-slate-300';
 
   // Iniciar simulación al montar, limpiar al desmontar
   useEffect(() => {
@@ -479,11 +478,14 @@ export const DashboardScreen: React.FC = () => {
 
         {/* Selector de Tema */}
         <TouchableOpacity
-          onPress={() => setTheme(isDark ? 'light' : 'dark')}
-          className={`p-2 rounded-xl ${isDark ? 'bg-zinc-800' : 'bg-slate-100'} border ${borderColor}`}
+          onPress={() => {
+            const next: AppTheme = theme === 'dark' ? 'light' : theme === 'light' ? 'industrial' : 'dark';
+            setTheme(next);
+          }}
+          className={`p-2 rounded-xl ${theme === 'industrial' ? 'bg-slate-800' : isDark ? 'bg-zinc-800' : 'bg-slate-100'} border ${borderColor}`}
           activeOpacity={0.7}
         >
-          <Text className="text-lg">{isDark ? '🌙' : '☀️'}</Text>
+          <Text className="text-lg">{theme === 'dark' ? '🌙' : theme === 'light' ? '☀️' : '🏭'}</Text>
         </TouchableOpacity>
       </View>
 

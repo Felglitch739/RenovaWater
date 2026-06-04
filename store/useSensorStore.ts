@@ -6,7 +6,7 @@ import { create } from 'zustand';
 
 /** Estado cualitativo de cada métrica */
 export type MetricStatus = 'ok' | 'warning' | 'danger';
-export type AppTheme = 'dark' | 'light';
+export type AppTheme = 'dark' | 'light' | 'industrial';
 
 /** Un registro histórico de una muestra del sensor */
 export interface HistoryRecord {
