@@ -311,15 +311,16 @@ export const ReportsView: React.FC = () => {
       </View>
 
       {/* ── Bloque 3: Resumen de alertas ── */}
-      <SectionLabel label="Alertas y Otros" isDark={isDark} />
-      <View className={`border ${isDark ? 'border-zinc-700/60 bg-zinc-800/40' : 'border-slate-200 bg-white shadow-sm'} rounded-xl p-4 mb-1 flex-row justify-between items-center`}>
+      <SectionLabel label="Alertas y Otros" isDark={isDark} isIndustrial={isIndustrial} />
+      <View className={`border ${isIndustrial ? 'border-slate-800 bg-[#0f172a]/80' : isDark ? 'border-zinc-700/60 bg-zinc-800/40' : 'border-slate-200 bg-white shadow-sm'} rounded-sm p-4 mb-1 flex-row justify-between items-center`}>
         <View>
-          <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
-            Total Alertas
+          <Text style={isIndustrial ? { fontFamily: 'monospace' } : undefined} className={`${isIndustrial ? 'text-[#7e8b9b] text-[9px] uppercase tracking-[2px]' : isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
+            {isIndustrial ? 'TOTAL_ALERTS_LOG' : 'Total Alertas'}
           </Text>
           <View className="flex-row items-baseline">
             <Text
-              className={`text-2xl font-bold font-mono ${
+              style={isIndustrial ? { fontFamily: 'monospace' } : undefined}
+              className={`text-2xl font-bold ${isIndustrial ? '' : 'font-mono'} ${
                 totalAlerts > 0 ? 'text-amber-500' : 'text-sky-500'
               }`}
             >
@@ -329,10 +330,10 @@ export const ReportsView: React.FC = () => {
         </View>
 
         <View className="items-end">
-          <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
-            Densidad prom.
+          <Text style={isIndustrial ? { fontFamily: 'monospace' } : undefined} className={`${isIndustrial ? 'text-[#7e8b9b] text-[9px] uppercase tracking-[2px]' : isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
+            {isIndustrial ? 'AVG_DENSITY' : 'Densidad prom.'}
           </Text>
-          <Text className={`${isDark ? 'text-white' : 'text-slate-900'} text-lg font-bold font-mono`}>
+          <Text style={isIndustrial ? { fontFamily: 'monospace' } : undefined} className={`${isIndustrial ? 'text-[#FFFFFF]' : isDark ? 'text-white' : 'text-slate-900'} text-lg font-bold ${isIndustrial ? '' : 'font-mono'}`}>
             {report.avgDensity}
           </Text>
         </View>
@@ -348,7 +349,7 @@ export const ReportsView: React.FC = () => {
         >
           <Text className="text-sky-500 text-lg mr-3">⤓</Text>
           <Text style={{ fontFamily: 'monospace' }} className="text-sky-500 text-xs font-bold tracking-[2px]">
-            EXEC_EXPORT_REPORT_CSV
+            EXPORT_REPORT_CSV
           </Text>
         </TouchableOpacity>
         {report.sampleCount === 0 && (
