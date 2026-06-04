@@ -35,8 +35,45 @@ const RIGHT_PANEL_HEADER: Record<NavTab, { title: string; sub: string }> = {
 };
 
 // ─────────────────────────────────────────────
-// Constantes de estilos funcionales (status → color)
-// Definidas fuera del componente para evitar re-renders
+// ESTRUCTURA INDUSTRIAL (HMI / SCADA STYLE)
+// ─────────────────────────────────────────────
+
+interface IndustrialMetricRowProps {
+  label: string;
+  value: number;
+  unit: string;
+  status: MetricStatus;
+  limit: string;
+}
+
+const IndustrialMetricRow: React.FC<IndustrialMetricRowProps> = ({ label, value, unit, status, limit }) => {
+  const barColor = status === 'ok' ? '#0ea5e9' : status === 'warning' ? '#fbbf24' : '#ef4444';
+
+  return (
+    <View className="flex-row items-center border-b border-slate-800 py-3 bg-[#1e293b]/30 px-3">
+      {/* Indicador de Estado (Barra Lateral) */}
+      <View style={{ width: 4, height: '80%', backgroundColor: barColor, borderRadius: 2 }} />
+
+      <View className="flex-1 ml-4">
+        <Text className="text-slate-500 text-[9px] font-bold tracking-[2px] uppercase">{label}</Text>
+        <Text className="text-slate-600 text-[8px] font-mono mt-0.5">REF_MAX: {limit}</Text>
+      </View>
+
+      <View className="items-end">
+        <View className="flex-row items-baseline">
+          <Text style={{ fontFamily: 'monospace' }} className="text-slate-100 text-2xl font-bold">{value}</Text>
+          <Text className="text-slate-500 text-[10px] font-bold ml-1.5 uppercase">{unit}</Text>
+        </View>
+        <Text className={`text-[8px] font-bold tracking-widest ${status === 'ok' ? 'text-sky-500' : status === 'warning' ? 'text-amber-500' : 'text-red-500'}`}>
+          {status.toUpperCase()}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────
+// Sub-componente: MetricCard compacta (Consumer Style)
 // ─────────────────────────────────────────────
 
 const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, value, unit, status, idealRange, theme }) => {
@@ -499,153 +536,236 @@ export const DashboardScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* ─── BODY: ENFOQUE MÓVIL ─── */}
-      <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
-
-        {/* ── SECCIÓN 1: MÉTRICAS ACTUALES ── */}
-        <View className="mb-6">
-          <View className="flex-row justify-between items-center mb-3 px-1">
-            <Text className={`${subTextColor} text-[10px] font-bold uppercase tracking-widest`}>
-              Lecturas en Tiempo Real
-            </Text>
-            {isConnected && (
-              <View className={`flex-row items-center ${brandBg} px-2 py-0.5 rounded-full`}>
-                <View className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5" />
-                <Text className={`${brandText} text-[9px] font-bold`}>SISTEMA ACTIVO</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Grid de Métricas: 2 columnas para mobile */}
-          <View className="flex-row flex-wrap -mx-1.5">
-            <View className="w-1/2 px-1.5">
-              <MetricCard
-                title="pH"
-                value={ph}
-                unit=""
-                status={phStatus}
-                idealRange={`${alertRanges.ph.min}–${alertRanges.ph.max}`}
-                theme={theme}
-              />
+      {/* ─── BODY: SELECTOR DE INTERFAZ ─── */}
+      {isIndustrial ? (
+        /* INTERFAZ INDUSTRIAL (SCADA / HMI) */
+        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+          {/* Panel de Sensores (Control de Proceso) */}
+          <View className="bg-[#0f172a] border-b border-slate-800">
+            <View className="px-4 py-3 bg-[#1e293b]/50 border-b border-slate-800">
+              <Text className="text-slate-500 text-[10px] font-bold tracking-[3px] uppercase">SENSOR_ARRAY_STREAM</Text>
             </View>
-            <View className="w-1/2 px-1.5">
-              <MetricCard
-                title="Densidad"
-                value={density}
-                unit="g/cm³"
-                status={densityStatus}
-                idealRange={`${alertRanges.density.min}–${alertRanges.density.max}`}
-                theme={theme}
-              />
-            </View>
-            <View className="w-full px-1.5">
-              <MetricCard
-                title="Turbidez"
-                value={turbidity}
-                unit="NTU"
-                status={turbidityStatus}
-                idealRange={`≤ ${alertRanges.turbidity.max} NTU`}
-                theme={theme}
-              />
-            </View>
-          </View>
 
-          {/* Botón de acción principal (BLE/Simular) */}
-          <TouchableOpacity
-            onPress={isConnected ? disconnect : connect}
-            activeOpacity={0.75}
-            className={`mt-2 py-3.5 rounded-2xl items-center border ${
-              isConnected
-                ? 'border-red-500/30 bg-red-500/10'
-                : `${brandBorder} ${brandBg}`
-            }`}
-          >
-            <Text
-              className={`text-xs font-bold uppercase tracking-widest ${
-                isConnected ? 'text-red-400' : brandText
-              }`}
+            <IndustrialMetricRow label="Potencial de Hidrógeno" value={ph} unit="pH" status={phStatus} limit={alertRanges.ph.max.toString()} />
+            <IndustrialMetricRow label="Densidad de Masa" value={density} unit="g/cm³" status={densityStatus} limit={alertRanges.density.max.toString()} />
+            <IndustrialMetricRow label="Índice de Turbidez" value={turbidity} unit="NTU" status={turbidityStatus} limit={alertRanges.turbidity.max.toString()} />
+
+            {/* Control Principal */}
+            <TouchableOpacity
+              onPress={isConnected ? disconnect : connect}
+              activeOpacity={0.7}
+              className={`py-4 items-center justify-center border-t border-slate-800 ${isConnected ? 'bg-red-500/5' : 'bg-sky-500/5'}`}
             >
-              {isScanning ? 'Sincronizando...' : isConnected ? '⏹ Detener Monitoreo' : '▶ Iniciar Escaneo'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── SECCIÓN 2: VISTA DETALLADA (TABS) ── */}
-        <View className="flex-1 pb-10">
-          <View className="flex-row items-center mb-4">
-            <View className={`w-1 h-4 ${isDark ? 'bg-zinc-500' : 'bg-slate-400'} rounded-full mr-3`} />
-            <View>
-              <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-bold`}>
-                {RIGHT_PANEL_HEADER[activeTab].title}
+              <Text style={{ fontFamily: 'monospace' }} className={`text-[11px] font-bold tracking-[2px] ${isConnected ? 'text-red-500' : 'text-sky-500'}`}>
+                {isConnected ? '>> TERMINATE_PROCESS' : '>> EXECUTE_SCAN'}
               </Text>
-              <Text className={`${subTextColor} text-[10px]`}>
-                {RIGHT_PANEL_HEADER[activeTab].sub}
-              </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
-          {/* Contenido dinámico */}
-          <View className="min-h-[300px]">
-            {activeTab === 'monitor' && (
-              <>
-                <View className={`${cardColor} border ${borderColor} rounded-2xl p-4 mb-4 shadow-sm`}>
-                  <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
-                </View>
-
-                <View className="flex-row -mx-1.5 mb-4">
-                  <StatCard
-                    label="Prom. pH"
-                    value={stats.avgPh}
-                    accent={stats.avgPh === '--' ? subTextColor : textColor}
-                    isDark={isDark}
-                  />
-                  <StatCard
-                    label="Pico Tur."
-                    value={stats.peakTurbidity}
-                    unit="NTU"
-                    accent={
-                      stats.peakTurbidity === '--'
-                        ? subTextColor
-                        : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
-                        ? 'text-red-500'
-                        : textColor
-                    }
-                    isDark={isDark}
-                  />
-                </View>
-
-                <View className="flex-row -mx-1">
-                  <ActionButton
-                    icon="⚙"
-                    label="Límites"
-                    onPress={() => setIsConfigOpen(true)}
-                    isDark={isDark}
-                  />
-                  <ActionButton
-                    icon="≡"
-                    label="Historial"
-                    onPress={() => setActiveTab('informes')}
-                    isDark={isDark}
-                  />
-                </View>
-              </>
-            )}
-
-            {activeTab === 'alertas' && <AlertsView />}
-            {activeTab === 'informes' && <ReportsView />}
-            {activeTab === 'ble' && (
-              <View className={`items-center justify-center py-10 ${isDark ? 'bg-zinc-800/20' : 'bg-white shadow-sm'} rounded-3xl border ${borderColor}`}>
-                <Text className="text-sky-500 text-3xl mb-4">⊕</Text>
-                <Text className={`${textColor} text-sm font-bold`}>Panel Bluetooth</Text>
-                <Text className={`${subTextColor} text-xs text-center mt-2 px-10 font-medium`}>
-                  {isConnected
-                    ? 'Sensor conectado vía BLE\nRecibiendo paquetes de datos...'
-                    : 'Buscando dispositivos cercanos\nAsegúrese que el sensor esté encendido'}
+          {/* Panel de Datos (Trends & Logs) */}
+          <View className="flex-1 px-4 pt-6 pb-20">
+            <View className="flex-row items-center mb-6">
+              <View className="w-1.5 h-6 bg-sky-600 mr-4" />
+              <View>
+                <Text className="text-slate-300 text-xs font-bold tracking-[1px] uppercase">
+                  {RIGHT_PANEL_HEADER[activeTab].title}
+                </Text>
+                <Text className="text-slate-600 text-[9px] font-mono mt-0.5 uppercase">
+                  System_Output: {RIGHT_PANEL_HEADER[activeTab].sub}
                 </Text>
               </View>
-            )}
+            </View>
+
+            {/* Contenido Modular */}
+            <View className="min-h-[300px]">
+              {activeTab === 'monitor' && (
+                <>
+                  <View className="bg-slate-900/50 border border-slate-800 p-4 mb-4">
+                    <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
+                  </View>
+                  <View className="flex-row -mx-1 mb-4">
+                    <StatCard label="AVG_PH" value={stats.avgPh} isDark={true} accent="text-slate-300" />
+                    <StatCard label="PEAK_TUR" value={stats.peakTurbidity} unit="NTU" isDark={true} accent="text-slate-300" />
+                  </View>
+                  <View className="flex-row border border-slate-800">
+                    <TouchableOpacity
+                      onPress={() => setIsConfigOpen(true)}
+                      className="flex-1 py-4 border-r border-slate-800 items-center"
+                    >
+                      <Text className="text-slate-500 text-[10px] font-bold">SET_LIMITS</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setActiveTab('informes')}
+                      className="flex-1 py-4 items-center"
+                    >
+                      <Text className="text-slate-500 text-[10px] font-bold">VIEW_LOGS</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+              {activeTab === 'alertas' && <AlertsView />}
+              {activeTab === 'informes' && <ReportsView />}
+              {activeTab === 'ble' && (
+                <View className="py-10 border border-dashed border-slate-700 items-center">
+                  <Text className="text-slate-600 text-[10px] font-mono uppercase">Waiting for BLE_SYNC_SIGNAL...</Text>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
+        </ScrollView>
+      ) : (
+        /* INTERFAZ CONSUMO (CARDS) */
+        <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
+          {/* ... (Todo el contenido de la interfaz de cartas que ya tenías) ... */}
+
+        /* INTERFAZ CONSUMO (CARDS) */
+        <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
+
+          {/* ── SECCIÓN 1: MÉTRICAS ACTUALES ── */}
+          <View className="mb-6">
+            <View className="flex-row justify-between items-center mb-3 px-1">
+              <Text className={`${subTextColor} text-[10px] font-bold uppercase tracking-widest`}>
+                Lecturas en Tiempo Real
+              </Text>
+              {isConnected && (
+                <View className={`flex-row items-center ${brandBg} px-2 py-0.5 rounded-full`}>
+                  <View className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5" />
+                  <Text className={`${brandText} text-[9px] font-bold`}>SISTEMA ACTIVO</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Grid de Métricas: 2 columnas para mobile */}
+            <View className="flex-row flex-wrap -mx-1.5">
+              <View className="w-1/2 px-1.5">
+                <MetricCard
+                  title="pH"
+                  value={ph}
+                  unit=""
+                  status={phStatus}
+                  idealRange={`${alertRanges.ph.min}–${alertRanges.ph.max}`}
+                  theme={theme}
+                />
+              </View>
+              <View className="w-1/2 px-1.5">
+                <MetricCard
+                  title="Densidad"
+                  value={density}
+                  unit="g/cm³"
+                  status={densityStatus}
+                  idealRange={`${alertRanges.density.min}–${alertRanges.density.max}`}
+                  theme={theme}
+                />
+              </View>
+              <View className="w-full px-1.5">
+                <MetricCard
+                  title="Turbidez"
+                  value={turbidity}
+                  unit="NTU"
+                  status={turbidityStatus}
+                  idealRange={`≤ ${alertRanges.turbidity.max} NTU`}
+                  theme={theme}
+                />
+              </View>
+            </View>
+
+            {/* Botón de acción principal (BLE/Simular) */}
+            <TouchableOpacity
+              onPress={isConnected ? disconnect : connect}
+              activeOpacity={0.75}
+              className={`mt-2 py-3.5 rounded-2xl items-center border ${
+                isConnected
+                  ? 'border-red-500/30 bg-red-500/10'
+                  : `${brandBorder} ${brandBg}`
+              }`}
+            >
+              <Text
+                className={`text-xs font-bold uppercase tracking-widest ${
+                  isConnected ? 'text-red-400' : brandText
+                }`}
+              >
+                {isScanning ? 'Sincronizando...' : isConnected ? '⏹ Detener Monitoreo' : '▶ Iniciar Escaneo'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── SECCIÓN 2: VISTA DETALLADA (TABS) ── */}
+          <View className="flex-1 pb-10">
+            <View className="flex-row items-center mb-4">
+              <View className={`w-1 h-4 ${isDark ? 'bg-zinc-500' : 'bg-slate-400'} rounded-full mr-3`} />
+              <View>
+                <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-bold`}>
+                  {RIGHT_PANEL_HEADER[activeTab].title}
+                </Text>
+                <Text className={`${subTextColor} text-[10px]`}>
+                  {RIGHT_PANEL_HEADER[activeTab].sub}
+                </Text>
+              </View>
+            </View>
+
+            {/* Contenido dinámico */}
+            <View className="min-h-[300px]">
+              {activeTab === 'monitor' && (
+                <>
+                  <View className={`${cardColor} border ${borderColor} rounded-2xl p-4 mb-4 shadow-sm`}>
+                    <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
+                  </View>
+
+                  <View className="flex-row -mx-1.5 mb-4">
+                    <StatCard
+                      label="Prom. pH"
+                      value={stats.avgPh}
+                      accent={stats.avgPh === '--' ? subTextColor : textColor}
+                      isDark={isDark}
+                    />
+                    <StatCard
+                      label="Pico Tur."
+                      value={stats.peakTurbidity}
+                      unit="NTU"
+                      accent={
+                        stats.peakTurbidity === '--'
+                          ? subTextColor
+                          : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
+                          ? 'text-red-500'
+                          : textColor
+                      }
+                      isDark={isDark}
+                    />
+                  </View>
+
+                  <View className="flex-row -mx-1">
+                    <ActionButton
+                      icon="⚙"
+                      label="Límites"
+                      onPress={() => setIsConfigOpen(true)}
+                      isDark={isDark}
+                    />
+                    <ActionButton
+                      icon="≡"
+                      label="Historial"
+                      onPress={() => setActiveTab('informes')}
+                      isDark={isDark}
+                    />
+                  </View>
+                </>
+              )}
+
+              {activeTab === 'alertas' && <AlertsView />}
+              {activeTab === 'informes' && <ReportsView />}
+              {activeTab === 'ble' && (
+                <View className={`items-center justify-center py-10 ${isDark ? 'bg-zinc-800/20' : 'bg-white shadow-sm'} rounded-3xl border ${borderColor}`}>
+                  <Text className="text-sky-500 text-3xl mb-4">⊕</Text>
+                  <Text className={`${textColor} text-sm font-bold`}>Panel Bluetooth</Text>
+                  <Text className={`${subTextColor} text-xs text-center mt-2 px-10 font-medium`}>
+                    {isConnected
+                      ? 'Sensor conectado vía BLE\nRecibiendo paquetes de datos...'
+                      : 'Buscando dispositivos cercanos\nAsegúrese que el sensor esté encendido'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
 
       </ScrollView>
 
