@@ -41,8 +41,10 @@ const RIGHT_PANEL_HEADER: Record<NavTab, { title: string; sub: string }> = {
 
 const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, value, unit, status, idealRange, theme }) => {
   const isDark = theme === 'dark';
-  const okText = 'text-sky-500';
-  const okBadge = isDark ? 'bg-sky-500/10' : 'bg-sky-500/5';
+  const isIndustrial = theme === 'industrial';
+
+  const okText = isIndustrial ? 'text-sky-400' : 'text-sky-500';
+  const okBadge = isIndustrial ? 'bg-sky-500/10' : (isDark ? 'bg-sky-500/10' : 'bg-sky-500/5');
   const okBorder = 'border-l-sky-500';
 
   const STATUS_CONFIG: Record<
@@ -58,14 +60,14 @@ const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, va
     },
     warning: {
       borderColor: 'border-l-amber-400',
-      badgeBg: isDark ? 'bg-amber-400/10' : 'bg-amber-400/5',
+      badgeBg: isDark || isIndustrial ? 'bg-amber-400/10' : 'bg-amber-400/5',
       badgeText: 'text-amber-500',
       label: 'PRECAUCIÓN',
       dotColor: 'bg-amber-400',
     },
     danger: {
       borderColor: 'border-l-red-500',
-      badgeBg: isDark ? 'bg-red-500/10' : 'bg-red-500/5',
+      badgeBg: isDark || isIndustrial ? 'bg-red-500/10' : 'bg-red-500/5',
       badgeText: 'text-red-500',
       label: 'NO APTA',
       dotColor: 'bg-red-500',
@@ -73,19 +75,24 @@ const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, va
   };
 
   const cfg = STATUS_CONFIG[status];
-  const cardColor = isDark ? 'bg-zinc-800/80' : 'bg-white';
-  const borderColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
-  const titleColor = isDark ? 'text-zinc-400' : 'text-slate-500';
-  const valueColor = isDark ? 'text-white' : 'text-slate-900';
-  const unitColor = isDark ? 'text-zinc-500' : 'text-slate-400';
+
+  // ESTRUCTURA INDUSTRIAL DURA
+  const cardColor = isIndustrial ? 'bg-[#161B26]' : (isDark ? 'bg-zinc-800/80' : 'bg-white');
+  const borderColor = isIndustrial ? 'border-slate-800' : (isDark ? 'border-zinc-700/50' : 'border-slate-200');
+  const cornerRadius = isIndustrial ? 'rounded-lg' : 'rounded-xl'; // Esquinas más rectas (8dp aprox)
+  const borderLeftWidth = isIndustrial ? 'border-l-[4px]' : 'border-l-4';
+
+  const titleColor = isIndustrial ? 'text-slate-500' : (isDark ? 'text-zinc-400' : 'text-slate-500');
+  const valueColor = isIndustrial ? 'text-slate-100' : (isDark ? 'text-white' : 'text-slate-900');
+  const unitColor = isIndustrial ? 'text-slate-600' : (isDark ? 'text-zinc-500' : 'text-slate-400');
 
   return (
     <View
-      className={`${cardColor} rounded-xl border-l-4 ${cfg.borderColor} border ${borderColor} p-4 mb-3 shadow-sm`}
+      className={`${cardColor} ${cornerRadius} ${borderLeftWidth} ${cfg.borderColor} border ${borderColor} p-4 mb-3 shadow-sm`}
     >
-      {/* Header */}
+      {/* Header Industrial */}
       <View className="flex-row justify-between items-center mb-3">
-        <Text className={`${titleColor} text-[10px] font-bold uppercase tracking-widest`}>
+        <Text className={`${titleColor} text-[10px] font-bold uppercase tracking-[1.5px]`}>
           {title}
         </Text>
         <View className={`px-2 py-0.5 rounded ${cfg.badgeBg}`}>
@@ -93,16 +100,19 @@ const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, va
         </View>
       </View>
 
-      {/* Valor principal */}
+      {/* Valor con Tipografía Monospace (Instrumentación) */}
       <View className="flex-row items-baseline mb-2">
-        <Text className={`${valueColor} text-3xl font-bold font-mono tracking-tighter`}>
+        <Text
+          style={{ fontFamily: 'monospace' }}
+          className={`${valueColor} text-3xl font-bold tracking-tighter`}
+        >
           {value}
         </Text>
         <Text className={`${unitColor} text-[10px] ml-1.5 font-bold uppercase`}>{unit}</Text>
       </View>
 
-      {/* Rango ideal */}
-      <Text className={`${unitColor} text-[9px] font-medium`}>Rango: {idealRange}</Text>
+      {/* Footer Técnico */}
+      <Text className={`${unitColor} text-[9px] font-medium`}>LIMIT_REF: {idealRange}</Text>
     </View>
   );
 };
