@@ -766,8 +766,7 @@ export const DashboardScreen: React.FC = () => {
             </View>
           </View>
         </ScrollView>
-
-      </ScrollView>
+      )}
 
       {/* ─── BARRA DE NAVEGACIÓN INFERIOR ─── */}
       <BottomNav
