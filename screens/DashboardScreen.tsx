@@ -15,6 +15,7 @@ import {
   evaluateTurbidity,
   type HistoryRecord,
   type MetricStatus,
+  type AppTheme,
 } from '../store/useSensorStore';
 import { AlertsView } from '../components/AlertsView';
 import { ReportsView } from '../components/ReportsView';
@@ -75,6 +76,14 @@ const IndustrialMetricRow: React.FC<IndustrialMetricRowProps> = ({ label, value,
 // ─────────────────────────────────────────────
 // Sub-componente: MetricCard compacta (Consumer Style)
 // ─────────────────────────────────────────────
+
+interface MetricCardProps {
+  title: string;
+  value: number;
+  unit: string;
+  status: MetricStatus;
+  idealRange: string;
+}
 
 const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, value, unit, status, idealRange, theme }) => {
   const isDark = theme === 'dark';
@@ -173,7 +182,6 @@ const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, thres
     : 10;
 
   // Color DINÁMICO basado en el tema
-  const isDark = theme === 'dark';
   const okColor = '#0EA5E9'; // TPH Cyan siempre para el estado OK
 
   const barColor =
@@ -315,7 +323,7 @@ const NAV_ITEMS: { id: NavTab; icon: string; label: string }[] = [
 ];
 
 const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected, isDark }) => (
-  <View className={`flex-row ${isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'} border-t px-2 pb-2 pt-2`}>
+  <View className={`flex-row ${isDark || true ? 'bg-[#090e16] border-[#1e293b]' : 'bg-white border-slate-200'} border-t px-2 pb-2 pt-2 shadow-2xl`}>
     {NAV_ITEMS.map((item) => {
       const isActive = active === item.id;
       const isBle = item.id === 'ble';
@@ -333,29 +341,24 @@ const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected, isDar
               isBle
                 ? isConnected
                   ? 'text-sky-500'
-                  : isDark ? 'text-zinc-600' : 'text-slate-300'
+                  : 'text-slate-600'
                 : isActive
-                ? isDark ? 'text-zinc-100' : 'text-sky-600'
-                : isDark ? 'text-zinc-600' : 'text-slate-300'
+                ? 'text-sky-500'
+                : 'text-slate-600'
             }
           >
             {item.icon}
           </Text>
           <Text
-            className={`text-[10px] mt-0.5 font-bold uppercase tracking-tighter ${
-              isBle
-                ? isConnected
-                  ? 'text-sky-500'
-                  : isDark ? 'text-zinc-600' : 'text-slate-300'
-                : isActive
-                ? isDark ? 'text-zinc-200' : 'text-sky-600'
-                : isDark ? 'text-zinc-600' : 'text-slate-300'
+            style={{ fontFamily: 'monospace' }}
+            className={`text-[8px] mt-1 font-bold uppercase tracking-[1px] ${
+              isActive ? 'text-sky-500' : 'text-slate-600'
             }`}
           >
             {item.label}
           </Text>
-          {isActive && !isBle && (
-            <View className={`absolute bottom-0 w-1 h-1 rounded-full ${isDark ? 'bg-zinc-300' : 'bg-sky-600'}`} />
+          {isActive && (
+            <View className="absolute bottom-0 w-1 h-1 rounded-full bg-sky-500 shadow-lg shadow-sky-500/50" />
           )}
         </TouchableOpacity>
       );
@@ -614,10 +617,6 @@ export const DashboardScreen: React.FC = () => {
           </View>
         </ScrollView>
       ) : (
-        /* INTERFAZ CONSUMO (CARDS) */
-        <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
-          {/* ... (Todo el contenido de la interfaz de cartas que ya tenías) ... */}
-
         /* INTERFAZ CONSUMO (CARDS) */
         <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
 

@@ -38,6 +38,7 @@ interface ReportBlockProps {
   sublabel?: string;
   valueColor?: string;
   isDark: boolean;
+  isIndustrial: boolean;
 }
 
 const ReportBlock: React.FC<ReportBlockProps> = ({
@@ -47,36 +48,46 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
   sublabel,
   valueColor,
   isDark,
-}) => (
-  <View className={`w-full border ${isDark ? 'border-zinc-700/60 bg-zinc-800/40' : 'border-slate-200 bg-white'} rounded-xl p-3.5 mb-2 flex-row items-center justify-between shadow-sm`}>
-    <View className="flex-1 mr-4">
-      <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 leading-tight font-bold`}>
-        {label.replace('\n', ' ')}
-      </Text>
-      {sublabel ? (
-        <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] leading-tight flex-wrap font-medium`}>
-          {sublabel}
+  isIndustrial,
+}) => {
+  // Directriz SCADA: Geometría rígida y colores técnicos
+  const containerStyle = isIndustrial
+    ? "bg-[#0f172a]/80 border-slate-800 rounded-sm"
+    : "bg-[#1a2436] border-slate-700 rounded-md";
+
+  return (
+    <View className={`w-full border-b ${containerStyle} py-3 px-4 flex-row items-center justify-between mb-1`}>
+      <View className="flex-1 mr-4">
+        <Text style={{ fontFamily: 'monospace' }} className="text-[#7e8b9b] text-[9px] uppercase tracking-[2px] font-bold">
+          {label.replace('\n', '_')}
         </Text>
-      ) : null}
+        {sublabel ? (
+          <Text className="text-slate-500 text-[8px] mt-0.5 uppercase">
+            {sublabel}
+          </Text>
+        ) : null}
+      </View>
+      <View className="flex-row items-baseline">
+        <Text style={{ fontFamily: 'monospace' }} className={`${valueColor || 'text-[#FFFFFF]'} text-xl font-bold`}>
+          {value}
+        </Text>
+        {unit ? (
+          <Text className="text-slate-500 text-[9px] ml-1.5 font-bold uppercase">{unit}</Text>
+        ) : null}
+      </View>
     </View>
-    <View className="flex-row items-baseline">
-      <Text className={`${valueColor || (isDark ? 'text-white' : 'text-slate-900')} text-2xl font-bold font-mono`}>{value}</Text>
-      {unit ? (
-        <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] ml-1.5 font-bold`}>{unit}</Text>
-      ) : null}
-    </View>
-  </View>
-);
+  );
+};
 
 // ─────────────────────────────────────────────
 // Sub-componente: Separador con etiqueta
 // ─────────────────────────────────────────────
 
-const SectionLabel: React.FC<{ label: string; isDark: boolean }> = ({ label, isDark }) => (
+const SectionLabel: React.FC<{ label: string; isDark: boolean; isIndustrial: boolean }> = ({ label, isDark, isIndustrial }) => (
   <View className="flex-row items-center mb-4 mt-5">
-    <View className={`flex-1 h-px ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
-    <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] uppercase tracking-widest mx-3 font-bold`}>{label}</Text>
-    <View className={`flex-1 h-px ${isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
+    <View className={`flex-1 h-px ${isIndustrial ? 'bg-slate-800' : isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
+    <Text className={`${isIndustrial ? 'text-slate-500' : isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] uppercase tracking-widest mx-3 font-bold`}>{label}</Text>
+    <View className={`flex-1 h-px ${isIndustrial ? 'bg-slate-800' : isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
   </View>
 );
 
@@ -88,6 +99,7 @@ export const ReportsView: React.FC = () => {
   const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected, theme } =
     useSensorStore();
   const isDark = theme === 'dark';
+  const isIndustrial = theme === 'industrial';
 
   const [realTimeDuration, setRealTimeDuration] = useState<string>('--');
 
@@ -326,28 +338,24 @@ export const ReportsView: React.FC = () => {
         </View>
       </View>
 
-      {/* ── Botón de exportar ── */}
-      <View className="mt-5 mb-5">
+      {/* ── Botón de exportar: COMANDO TÉCNICO ── */}
+      <View className="mt-8 mb-10">
         <TouchableOpacity
           onPress={handleExport}
-          activeOpacity={0.8}
+          activeOpacity={0.7}
           disabled={report.sampleCount === 0}
-          className={`border rounded-2xl py-4 px-5 flex-row items-center justify-center ${
-            report.sampleCount > 0
-              ? isDark ? 'border-zinc-700 bg-zinc-800/60' : 'border-slate-300 bg-slate-100 shadow-sm'
-              : 'border-zinc-800 opacity-40'
-          }`}
+          className={`border ${report.sampleCount > 0 ? 'border-sky-500/50 bg-[#0f172a]' : 'border-slate-800 opacity-30'} py-4 flex-row items-center justify-center rounded-sm`}
         >
-          <Text className="text-sky-500 text-lg mr-3">📥</Text>
-          <View>
-            <Text className={`${isDark ? 'text-zinc-200' : 'text-slate-700'} text-sm font-bold`}>
-              Exportar Reporte CSV
-            </Text>
-            <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] font-medium`}>
-              Descargar historial de muestras
-            </Text>
-          </View>
+          <Text className="text-sky-500 text-lg mr-3">⤓</Text>
+          <Text style={{ fontFamily: 'monospace' }} className="text-sky-500 text-xs font-bold tracking-[2px]">
+            EXEC_EXPORT_REPORT_CSV
+          </Text>
         </TouchableOpacity>
+        {report.sampleCount === 0 && (
+          <Text className="text-slate-600 text-[8px] text-center mt-2 font-mono uppercase tracking-widest">
+            ERROR: NO_SENSOR_DATA_FOUND
+          </Text>
+        )}
       </View>
     </ScrollView>
   );
