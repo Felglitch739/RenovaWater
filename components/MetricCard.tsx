@@ -1,6 +1,12 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { MetricStatus } from '../store/useSensorStore';
+
+// ─────────────────────────────────────────────
+// MetricCard Premium (componente autónomo)
+// Usa AuraCard internamente vía LinearGradient
+// ─────────────────────────────────────────────
 
 interface MetricCardProps {
   title: string;
@@ -10,24 +16,27 @@ interface MetricCardProps {
   idealRange: string;
 }
 
-const STATUS_STYLES = {
+const STATUS_META = {
   ok: {
-    border: 'border-l-emerald-500',
-    badgeBg: 'bg-emerald-500/10',
-    badgeText: 'text-emerald-400',
-    label: 'APT',
+    accentColor: '#0EA5E9',
+    badgeBg: 'rgba(14,165,233,0.15)',
+    badgeText: '#38BDF8',
+    badgeBorder: 'rgba(14,165,233,0.3)',
+    label: 'NORMAL',
   },
   warning: {
-    border: 'border-l-amber-500',
-    badgeBg: 'bg-amber-500/10',
-    badgeText: 'text-amber-400',
-    label: 'PRECAUCIÓN',
+    accentColor: '#FBBF24',
+    badgeBg: 'rgba(251,191,36,0.15)',
+    badgeText: '#FCD34D',
+    badgeBorder: 'rgba(251,191,36,0.3)',
+    label: 'ALERTA',
   },
   danger: {
-    border: 'border-l-red-500',
-    badgeBg: 'bg-red-500/10',
-    badgeText: 'text-red-400',
-    label: 'NO APTA',
+    accentColor: '#EF4444',
+    badgeBg: 'rgba(239,68,68,0.15)',
+    badgeText: '#F87171',
+    badgeBorder: 'rgba(239,68,68,0.3)',
+    label: 'CRÍTICO',
   },
 } as const;
 
@@ -38,38 +47,139 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   status,
   idealRange,
 }) => {
-  const style = STATUS_STYLES[status];
+  const meta = STATUS_META[status];
 
   return (
-    <View className={`bg-zinc-800 rounded-lg border-l-4 ${style.border} p-5 mb-4`}>
-      {/* Cabecera: Título + Badge de estado */}
-      <View className="flex-row justify-between items-start mb-4">
-        <Text className="text-zinc-400 text-sm font-semibold uppercase tracking-widest">
-          {title}
-        </Text>
-        <View className={`px-2.5 py-1 rounded-md ${style.badgeBg}`}>
-          <Text className={`${style.badgeText} text-xs font-bold`}>
-            {style.label}
-          </Text>
+    <View style={styles.shadowWrap}>
+      <LinearGradient
+        colors={['#1C222B', '#14181F']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradient}
+      >
+        {/* Borde inferior oscuro */}
+        <View style={[StyleSheet.absoluteFillObject, styles.bottomBorder]} pointerEvents="none" />
+
+        {/* Barra de acento (status) */}
+        <View style={[styles.accentBar, {
+          backgroundColor: meta.accentColor,
+          shadowColor: meta.accentColor,
+        }]} pointerEvents="none" />
+
+        {/* Contenido */}
+        <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.titleLabel}>{title}</Text>
+            <View style={[styles.badge, { backgroundColor: meta.badgeBg, borderColor: meta.badgeBorder,
+              shadowColor: status !== 'ok' ? meta.accentColor : 'transparent',
+              shadowOpacity: status !== 'ok' ? 0.4 : 0, }]}>
+              <Text style={[styles.badgeText, { color: meta.badgeText }]}>{meta.label}</Text>
+            </View>
+          </View>
+
+          {/* Valor hero */}
+          <View style={styles.valueRow}>
+            <Text style={styles.valueText}>{value}</Text>
+            {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
+          </View>
+
+          {/* Rango de referencia */}
+          <Text style={styles.rangeText}>Rango ref: {idealRange}</Text>
         </View>
-      </View>
-
-      {/* Valor principal: grande y monoespaciado para estabilidad visual */}
-      <View className="flex-row items-baseline mb-3">
-        <Text className="text-white text-5xl font-bold tracking-tighter font-mono">
-          {value}
-        </Text>
-        <Text className="text-zinc-500 text-base ml-1.5 font-medium">
-          {unit}
-        </Text>
-      </View>
-
-      {/* Meta-info */}
-      <View className="flex-row justify-between items-center">
-        <Text className="text-zinc-500 text-xs">
-          Rango ideal: {idealRange}
-        </Text>
-      </View>
+      </LinearGradient>
     </View>
   );
 };
+
+const styles = StyleSheet.create({
+  shadowWrap: {
+    borderRadius: 20,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  gradient: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderTopWidth: 1.5,
+    borderLeftWidth: 0.5,
+    borderTopColor: 'rgba(255,255,255,0.10)',
+    borderLeftColor: 'rgba(255,255,255,0.06)',
+  },
+  bottomBorder: {
+    borderRadius: 20,
+    borderBottomWidth: 2,
+    borderRightWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.55)',
+    borderRightColor: 'rgba(0,0,0,0.30)',
+  },
+  accentBar: {
+    position: 'absolute',
+    left: 0,
+    top: 10,
+    bottom: 10,
+    width: 3.5,
+    borderRadius: 2,
+    shadowOpacity: 0.7,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  content: {
+    padding: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  titleLabel: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  valueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  valueText: {
+    color: '#F1F5F9',
+    fontSize: 38,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    lineHeight: 42,
+  },
+  unitText: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '500',
+    marginLeft: 6,
+    marginBottom: 4,
+  },
+  rangeText: {
+    color: '#374151',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+});

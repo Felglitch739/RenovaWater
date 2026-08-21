@@ -1,17 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
+  Platform,
+  StyleSheet,
+  useWindowDimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   useSensorStore,
   evaluatePh,
-  evaluateDensity,
+  evaluateTemperature,
   evaluateTurbidity,
   type HistoryRecord,
   type MetricStatus,
@@ -20,6 +26,32 @@ import {
 import { AlertsView } from '../components/AlertsView';
 import { ReportsView } from '../components/ReportsView';
 import { ConfigModal } from '../components/ConfigModal';
+import { AuraCard } from '../components/AuraCard';
+import { GlowLineChart } from '../components/GlowLineChart';
+import { SemiCircleGauge } from '../components/SemiCircleGauge';
+import { TurbidityMeterCard } from '../components/TurbidityMeterCard';
+import { PhLevelGauge } from '../components/PhLevelGauge';
+import { TemperatureGauge } from '../components/TemperatureGauge';
+import { ConductivityChart } from '../components/ConductivityChart';
+import {
+  MoonIcon,
+  SunIcon,
+  MonitorIcon,
+  AlertTriangleIcon,
+  FileTextIcon,
+  BluetoothIcon,
+  SettingsIcon,
+  HistoryIcon,
+  PlayIcon,
+  StopIcon,
+  SignalIcon,
+  BatteryIcon,
+  ZapIcon,
+  InfoIcon,
+  DropletIcon,
+  ThermometerIcon,
+  WavesIcon,
+} from '../components/Icons';
 
 // ─────────────────────────────────────────────
 // Tipos internos
@@ -27,285 +59,85 @@ import { ConfigModal } from '../components/ConfigModal';
 
 type NavTab = 'monitor' | 'alertas' | 'informes' | 'ble';
 
-/** Devuelve el título y subtítulo de la columna derecha según la pestaña activa */
-const RIGHT_PANEL_HEADER: Record<NavTab, { title: string; sub: string }> = {
-  monitor:  { title: 'Historial de Calidad',   sub: 'Turbidez · últimas 24 muestras' },
-  alertas:  { title: 'Log de Alertas',          sub: 'Eventos fuera de rango en sesión' },
-  informes: { title: 'Informe de Turno',        sub: 'Resumen analítico del período' },
-  ble:      { title: 'Conexión Bluetooth BLE',  sub: 'Dispositivos emparejados' },
+// ─────────────────────────────────────────────
+// Paleta de tema premium
+// ─────────────────────────────────────────────
+
+const DARK_THEME = {
+  bg: '#0A0D14',
+  card: ['#1C222B', '#14181F'] as [string, string],
+  headerBg: 'rgba(12,15,22,0.97)',
+  headerBorder: 'rgba(255,255,255,0.06)',
+  navBg: '#080C13',
+  navBorder: 'rgba(255,255,255,0.06)',
+  textPrimary: '#F1F5F9',
+  textSecondary: '#64748B',
+  textMuted: '#374151',
+  accent: '#0EA5E9',
+};
+
+const LIGHT_THEME = {
+  bg: '#F1F5F9',
+  card: ['#FFFFFF', '#F8FAFC'] as [string, string],
+  headerBg: '#FFFFFF',
+  headerBorder: 'rgba(0,0,0,0.08)',
+  navBg: '#FFFFFF',
+  navBorder: 'rgba(0,0,0,0.10)',
+  textPrimary: '#0F172A',
+  textSecondary: '#64748B',
+  textMuted: '#94A3B8',
+  accent: '#0284C7',
 };
 
 // ─────────────────────────────────────────────
-// ESTRUCTURA INDUSTRIAL (HMI / SCADA STYLE)
-// ─────────────────────────────────────────────
-
-interface IndustrialMetricRowProps {
-  label: string;
-  value: number;
-  unit: string;
-  status: MetricStatus;
-  limit: string;
-}
-
-const IndustrialMetricRow: React.FC<IndustrialMetricRowProps> = ({ label, value, unit, status, limit }) => {
-  const barColor = status === 'ok' ? '#0ea5e9' : status === 'warning' ? '#fbbf24' : '#ef4444';
-
-  return (
-    <View className="flex-row items-center border-b border-slate-800 py-3 bg-[#1e293b]/30 px-3">
-      {/* Indicador de Estado (Barra Lateral) */}
-      <View style={{ width: 4, height: '80%', backgroundColor: barColor, borderRadius: 2 }} />
-
-      <View className="flex-1 ml-4">
-        <Text className="text-slate-500 text-[9px] font-bold tracking-[2px] uppercase">{label}</Text>
-        <Text className="text-slate-600 text-[8px] font-mono mt-0.5">REF_MAX: {limit}</Text>
-      </View>
-
-      <View className="items-end">
-        <View className="flex-row items-baseline">
-          <Text style={{ fontFamily: 'monospace' }} className="text-slate-100 text-2xl font-bold">{value}</Text>
-          <Text className="text-slate-500 text-[10px] font-bold ml-1.5 uppercase">{unit}</Text>
-        </View>
-        <Text className={`text-[8px] font-bold tracking-widest ${status === 'ok' ? 'text-sky-500' : status === 'warning' ? 'text-amber-500' : 'text-red-500'}`}>
-          {status.toUpperCase()}
-        </Text>
-      </View>
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────
-// Sub-componente: MetricCard compacta (Consumer Style)
-// ─────────────────────────────────────────────
-
-interface MetricCardProps {
-  title: string;
-  value: number;
-  unit: string;
-  status: MetricStatus;
-  idealRange: string;
-}
-
-const MetricCard: React.FC<MetricCardProps & { theme: AppTheme }> = ({ title, value, unit, status, idealRange, theme }) => {
-  const isDark = theme === 'dark';
-  const isIndustrial = theme === 'industrial';
-
-  const okText = isIndustrial ? 'text-sky-400' : 'text-sky-500';
-  const okBadge = isIndustrial ? 'bg-sky-500/10' : (isDark ? 'bg-sky-500/10' : 'bg-sky-500/5');
-  const okBorder = 'border-l-sky-500';
-
-  const STATUS_CONFIG: Record<
-    MetricStatus,
-    { borderColor: string; badgeBg: string; badgeText: string; label: string; dotColor: string }
-  > = {
-    ok: {
-      borderColor: okBorder,
-      badgeBg: okBadge,
-      badgeText: okText,
-      label: 'APT',
-      dotColor: 'bg-sky-500',
-    },
-    warning: {
-      borderColor: 'border-l-amber-400',
-      badgeBg: isDark || isIndustrial ? 'bg-amber-400/10' : 'bg-amber-400/5',
-      badgeText: 'text-amber-500',
-      label: 'PRECAUCIÓN',
-      dotColor: 'bg-amber-400',
-    },
-    danger: {
-      borderColor: 'border-l-red-500',
-      badgeBg: isDark || isIndustrial ? 'bg-red-500/10' : 'bg-red-500/5',
-      badgeText: 'text-red-500',
-      label: 'NO APTA',
-      dotColor: 'bg-red-500',
-    },
-  };
-
-  const cfg = STATUS_CONFIG[status];
-
-  // ESTRUCTURA INDUSTRIAL DURA
-  const cardColor = isIndustrial ? 'bg-[#161B26]' : (isDark ? 'bg-zinc-800/80' : 'bg-white');
-  const borderColor = isIndustrial ? 'border-slate-800' : (isDark ? 'border-zinc-700/50' : 'border-slate-200');
-  const cornerRadius = isIndustrial ? 'rounded-lg' : 'rounded-xl'; // Esquinas más rectas (8dp aprox)
-  const borderLeftWidth = isIndustrial ? 'border-l-[4px]' : 'border-l-4';
-
-  const titleColor = isIndustrial ? 'text-slate-500' : (isDark ? 'text-zinc-400' : 'text-slate-500');
-  const valueColor = isIndustrial ? 'text-slate-100' : (isDark ? 'text-white' : 'text-slate-900');
-  const unitColor = isIndustrial ? 'text-slate-600' : (isDark ? 'text-zinc-500' : 'text-slate-400');
-
-  return (
-    <View
-      className={`${cardColor} ${cornerRadius} ${borderLeftWidth} ${cfg.borderColor} border ${borderColor} p-4 mb-3 shadow-sm`}
-    >
-      {/* Header Industrial */}
-      <View className="flex-row justify-between items-center mb-3">
-        <Text className={`${titleColor} text-[10px] font-bold uppercase tracking-[1.5px]`}>
-          {title}
-        </Text>
-        <View className={`px-2 py-0.5 rounded ${cfg.badgeBg}`}>
-          <Text className={`${cfg.badgeText} text-[9px] font-bold`}>{cfg.label}</Text>
-        </View>
-      </View>
-
-      {/* Valor con Tipografía Monospace (Instrumentación) */}
-      <View className="flex-row items-baseline mb-2">
-        <Text
-          style={{ fontFamily: 'monospace' }}
-          className={`${valueColor} text-3xl font-bold tracking-tighter`}
-        >
-          {value}
-        </Text>
-        <Text className={`${unitColor} text-[10px] ml-1.5 font-bold uppercase`}>{unit}</Text>
-      </View>
-
-      {/* Footer Técnico */}
-      <Text className={`${unitColor} text-[9px] font-medium`}>LIMIT_REF: {idealRange}</Text>
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────
-// Sub-componente: Barra individual del histograma
-// ─────────────────────────────────────────────
-
-interface ChartBarProps {
-  record: HistoryRecord;
-  maxTurbidity: number;
-  isLast: boolean;
-  threshold: number; // Umbral configurado por el usuario
-  theme: AppTheme;
-}
-
-const ChartBar: React.FC<ChartBarProps> = ({ record, maxTurbidity, isLast, threshold, theme }) => {
-  // Normalizar la turbidez al espacio de la barra (máx. 100% de altura)
-  const heightPercent = maxTurbidity > 0
-    ? Math.min((record.turbidity / maxTurbidity) * 100, 100)
-    : 10;
-
-  // Color DINÁMICO basado en el tema
-  const okColor = '#0EA5E9'; // TPH Cyan siempre para el estado OK
-
-  const barColor =
-    record.turbidity <= threshold
-      ? okColor
-      : record.turbidity <= threshold * 4
-      ? '#fbbf24'   // amber-400
-      : '#ef4444';  // red-500
-
-  return (
-    <View className="flex-1 items-center justify-end" style={{ height: 80 }}>
-      <View
-        style={{
-          width: isLast ? 6 : 4,
-          height: `${Math.max(heightPercent, 8)}%`,
-          backgroundColor: barColor,
-          borderRadius: 3,
-          opacity: isLast ? 1 : 0.55,
-        }}
-      />
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────
-// Sub-componente: Gráfica de tendencias (pure RN Views)
-// ─────────────────────────────────────────────
-
-interface TrendChartProps {
-  data: HistoryRecord[];
-  threshold: number; // Recibe el límite actual
-  theme: AppTheme;
-}
-
-const TrendChart: React.FC<TrendChartProps> = ({ data, threshold, theme }) => {
-  const maxTurbidity = data.length > 0
-    ? Math.max(...data.map((r) => r.turbidity), threshold, 5)
-    : 45;
-
-  const lastRecord = data[data.length - 1];
-  const firstRecord = data[0];
-
-  const okColor = 'bg-sky-500'; // TPH Cyan
-
-  const isDark = theme === 'dark';
-  const legendColor = isDark ? 'text-zinc-600' : 'text-slate-400';
-  const axisColor = isDark ? 'border-zinc-700/50' : 'border-slate-200';
-
-  return (
-    <View className="flex-1">
-      {/* Título de la gráfica + leyenda */}
-      <View className="flex-row justify-between items-baseline mb-3">
-        <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-[10px] font-bold uppercase tracking-wider`}>
-          Tendencia Turbidez
-        </Text>
-        <View className="flex-row items-center gap-x-2">
-          <View className="flex-row items-center">
-            <View className={`w-1.5 h-1.5 rounded-full ${okColor} mr-1`} />
-            <Text className={`${legendColor} text-[8px]`}>≤{threshold}</Text>
-          </View>
-          <View className="flex-row items-center">
-            <View className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-1" />
-            <Text className={`${legendColor} text-[8px]`}>≤{threshold * 4}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Área de barras */}
-      {data.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className={`${legendColor} text-[9px] uppercase tracking-widest`}>
-            Sin datos · Conectar sensor
-          </Text>
-        </View>
-      ) : (
-        <View className={`flex-1 flex-row items-end border-b ${axisColor} pb-1`}>
-          {data.map((record, index) => (
-            <ChartBar
-              key={`${record.time}-${index}`}
-              record={record}
-              maxTurbidity={maxTurbidity}
-              isLast={index === data.length - 1}
-              threshold={threshold}
-              theme={theme}
-            />
-          ))}
-        </View>
-      )}
-
-      {/* Etiquetas de tiempo */}
-      {data.length > 1 && (
-        <View className="flex-row justify-between mt-1">
-          <Text className="text-zinc-600 text-[8px] font-mono">{firstRecord?.time}</Text>
-          <Text className="text-zinc-400 text-[8px] font-mono">{lastRecord?.time} ←</Text>
-        </View>
-      )}
-    </View>
-  );
-};
-
-// ─────────────────────────────────────────────
-// Sub-componente: Micro-tarjeta de estadística
+// Sub-componente: Micro-tarjeta de estadística Premium
 // ─────────────────────────────────────────────
 
 interface StatCardProps {
   label: string;
   value: string;
   unit?: string;
-  accent?: string; // clase de texto de color
+  valueColor?: string;
   isDark: boolean;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ label, value, unit, accent = 'text-white', isDark }) => (
-  <View className={`flex-1 ${isDark ? 'bg-zinc-800/60' : 'bg-white'} border ${isDark ? 'border-zinc-700/50' : 'border-slate-200'} rounded-xl p-3 mx-1 shadow-sm`}>
-    <Text className={`${isDark ? 'text-zinc-500' : 'text-slate-500'} text-[9px] uppercase tracking-widest mb-1.5 font-bold`}>{label}</Text>
-    <View className="flex-row items-baseline">
-      <Text className={`${accent} text-2xl font-bold font-mono`}>{value}</Text>
-      {unit ? <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] ml-1 font-bold`}>{unit}</Text> : null}
-    </View>
-  </View>
-);
+const StatCard: React.FC<StatCardProps> = ({ label, value, unit, valueColor, isDark }) => {
+  const T = isDark ? DARK_THEME : LIGHT_THEME;
+  return (
+    <AuraCard colors={T.card} radius={16} style={{ flex: 1, marginHorizontal: 3 }}>
+      <View style={{ padding: 12 }}>
+        <Text style={{
+          color: T.textSecondary,
+          fontSize: 9,
+          fontWeight: '700',
+          letterSpacing: 1.2,
+          textTransform: 'uppercase',
+          marginBottom: 4,
+        }}>
+          {label}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+          <Text style={{
+            color: valueColor ?? T.textPrimary,
+            fontSize: 20,
+            fontWeight: 'bold',
+            fontFamily: 'monospace',
+          }}>
+            {value}
+          </Text>
+          {unit ? (
+            <Text style={{ color: T.textSecondary, fontSize: 10, marginLeft: 3, marginBottom: 2 }}>
+              {unit}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </AuraCard>
+  );
+};
 
 // ─────────────────────────────────────────────
-// Sub-componente: Barra de navegación inferior
+// Sub-componente: Barra de navegación inferior Premium
 // ─────────────────────────────────────────────
 
 interface NavBarProps {
@@ -313,58 +145,141 @@ interface NavBarProps {
   onSelect: (tab: NavTab) => void;
   isConnected: boolean;
   isDark: boolean;
+  totalAlerts: number;
+  bottomPadding: number;
 }
 
-const NAV_ITEMS: { id: NavTab; icon: string; label: string }[] = [
-  { id: 'monitor',  icon: '⬡',  label: 'Monitor'   },
-  { id: 'alertas',  icon: '⚠',  label: 'Alertas'   },
-  { id: 'informes', icon: '≡',  label: 'Informes'  },
-  { id: 'ble',      icon: '⊕',  label: 'BLE'       },
+interface NavItemDef {
+  id: NavTab;
+  label: string;
+  renderIcon: (color: string) => React.ReactNode;
+}
+
+const NAV_ITEMS: NavItemDef[] = [
+  {
+    id: 'monitor',
+    label: 'Monitor',
+    renderIcon: (color) => <MonitorIcon size={19} color={color} />,
+  },
+  {
+    id: 'alertas',
+    label: 'Alertas',
+    renderIcon: (color) => <AlertTriangleIcon size={19} color={color} />,
+  },
+  {
+    id: 'informes',
+    label: 'Informes',
+    renderIcon: (color) => <FileTextIcon size={19} color={color} />,
+  },
+  {
+    id: 'ble',
+    label: 'Bluetooth',
+    renderIcon: (color) => <BluetoothIcon size={19} color={color} />,
+  },
 ];
 
-const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected, isDark }) => (
-  <View className={`flex-row ${isDark || true ? 'bg-[#090e16] border-[#1e293b]' : 'bg-white border-slate-200'} border-t px-2 pb-2 pt-2 shadow-2xl`}>
-    {NAV_ITEMS.map((item) => {
-      const isActive = active === item.id;
-      const isBle = item.id === 'ble';
+const BottomNav: React.FC<NavBarProps> = ({
+  active,
+  onSelect,
+  isConnected,
+  isDark,
+  totalAlerts,
+  bottomPadding,
+}) => {
+  const T = isDark ? DARK_THEME : LIGHT_THEME;
+  return (
+    <View
+      style={{
+        paddingBottom: bottomPadding,
+        backgroundColor: T.navBg,
+        borderTopWidth: 1,
+        borderTopColor: T.navBorder,
+        flexDirection: 'row',
+        paddingHorizontal: 8,
+        paddingTop: 8,
+        alignItems: 'center',
+        justifyContent: 'space-around',
+        shadowColor: '#000',
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: -4 },
+        elevation: 16,
+      }}
+    >
+      {NAV_ITEMS.map((item) => {
+        const isActive = active === item.id;
+        const isBle = item.id === 'ble';
+        const isAlert = item.id === 'alertas';
 
-      return (
-        <TouchableOpacity
-          key={item.id}
-          onPress={() => onSelect(item.id)}
-          activeOpacity={0.7}
-          className="flex-1 items-center py-1.5"
-        >
-          <Text
-            style={{ fontSize: 18 }}
-            className={
-              isBle
-                ? isConnected
-                  ? 'text-sky-500'
-                  : 'text-slate-600'
-                : isActive
-                ? 'text-sky-500'
-                : 'text-slate-600'
-            }
+        const iconColor = isActive
+          ? '#38BDF8'
+          : isBle && isConnected
+          ? '#10B981'
+          : isDark ? '#64748B' : '#94A3B8';
+
+        return (
+          <TouchableOpacity
+            key={item.id}
+            onPress={() => onSelect(item.id)}
+            activeOpacity={0.7}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 2 }}
           >
-            {item.icon}
-          </Text>
-          <Text
-            style={{ fontFamily: 'monospace' }}
-            className={`text-[8px] mt-1 font-bold uppercase tracking-[1px] ${
-              isActive ? 'text-sky-500' : 'text-slate-600'
-            }`}
-          >
-            {item.label}
-          </Text>
-          {isActive && (
-            <View className="absolute bottom-0 w-1 h-1 rounded-full bg-sky-500 shadow-lg shadow-sky-500/50" />
-          )}
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-);
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 16,
+                alignItems: 'center',
+                borderWidth: 1,
+                minWidth: 64,
+                position: 'relative',
+                backgroundColor: isActive ? 'rgba(14,165,233,0.14)' : 'transparent',
+                borderColor: isActive ? 'rgba(14,165,233,0.3)' : 'transparent',
+              }}
+            >
+              {item.renderIcon(iconColor)}
+
+              <Text style={{
+                fontSize: 10,
+                marginTop: 3,
+                fontWeight: '600',
+                color: isActive ? '#38BDF8' : isDark ? '#64748B' : '#94A3B8',
+                letterSpacing: 0.2,
+              }}>
+                {item.label}
+              </Text>
+
+              {/* Badge de Alertas activas */}
+              {isAlert && totalAlerts > 0 && (
+                <View style={{
+                  position: 'absolute', top: -4, right: -4,
+                  backgroundColor: '#EF4444', borderRadius: 10,
+                  paddingHorizontal: 5, paddingVertical: 2,
+                  minWidth: 16, alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1.5, borderColor: T.navBg,
+                  shadowColor: '#EF4444', shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+                }}>
+                  <Text style={{ color: '#fff', fontSize: 8, fontWeight: 'bold', lineHeight: 11 }}>
+                    {totalAlerts > 99 ? '99+' : totalAlerts}
+                  </Text>
+                </View>
+              )}
+
+              {/* Indicador de BLE Conectado con glow */}
+              {isBle && isConnected && (
+                <View style={{
+                  position: 'absolute', top: 6, right: 8,
+                  width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#10B981',
+                  shadowColor: '#10B981', shadowOpacity: 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+                }} />
+              )}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
 
 // ─────────────────────────────────────────────
 // Sub-componente: Botón de acción utilitario
@@ -372,36 +287,25 @@ const BottomNav: React.FC<NavBarProps> = ({ active, onSelect, isConnected, isDar
 
 interface ActionButtonProps {
   label: string;
-  icon: string;
+  icon: React.ReactNode;
   onPress: () => void;
   isDark: boolean;
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ label, icon, onPress, isDark }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.75}
-    className={`flex-1 flex-row items-center justify-center border ${isDark ? 'border-zinc-700 bg-zinc-800/40' : 'border-slate-200 bg-white'} rounded-xl py-3 mx-1 shadow-sm`}
-  >
-    <Text className="text-sky-500 text-base mr-2">{icon}</Text>
-    <Text className={`${isDark ? 'text-zinc-400' : 'text-slate-600'} text-[10px] font-bold uppercase tracking-wider`}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
-
-// ─────────────────────────────────────────────
-// Helpers de timestamp
-// ─────────────────────────────────────────────
-
-const formatTimestamp = (date: Date | null): string => {
-  if (!date) return '--:--:--';
-  return date.toLocaleTimeString('es-MX', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+const ActionButton: React.FC<ActionButtonProps> = ({ label, icon, onPress, isDark }) => {
+  const T = isDark ? DARK_THEME : LIGHT_THEME;
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={{ flex: 1, marginHorizontal: 4 }}>
+      <AuraCard colors={T.card} radius={16}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 8 }}>
+          <View style={{ marginRight: 8 }}>{icon}</View>
+          <Text style={{ color: T.textPrimary, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 }}>
+            {label}
+          </Text>
+        </View>
+      </AuraCard>
+    </TouchableOpacity>
+  );
 };
 
 // ─────────────────────────────────────────────
@@ -414,9 +318,8 @@ export const DashboardScreen: React.FC = () => {
 
   const {
     ph,
-    density,
+    temperature,
     turbidity,
-    lastUpdated,
     isConnected,
     isScanning,
     alertRanges,
@@ -428,26 +331,18 @@ export const DashboardScreen: React.FC = () => {
     disconnect,
   } = useSensorStore();
 
-  // Colores según tema (Inspirados en el Logo TPH y Estilo Industrial HMI)
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const horizontalScrollRef = useRef<ScrollView>(null);
+
+  // Status bar & safe insets
+  const topPadding =
+    Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20) + 8;
+  const bottomPadding = Math.max(insets.bottom, 8);
+
+  // Paleta activa según tema
   const isDark = theme === 'dark';
-  const isIndustrial = theme === 'industrial';
-
-  // Paleta TPH e Industrial Slate
-  const tphCyan = '#0EA5E9'; // sky-500
-
-  const brandPrimary = isIndustrial ? '#64748b' : tphCyan;
-  const brandBg = isIndustrial ? 'bg-slate-500/10' : isDark ? 'bg-sky-500/10' : 'bg-sky-500/5';
-  const brandText = isIndustrial ? 'text-slate-400' : isDark ? 'text-sky-400' : 'text-sky-600';
-  const brandBorder = isIndustrial ? 'border-slate-500/30' : isDark ? 'border-sky-500/30' : 'border-sky-200';
-
-  const bgColor = isIndustrial ? 'bg-[#1a202c]' : isDark ? 'bg-zinc-900' : 'bg-slate-100';
-  const cardColor = isIndustrial ? 'bg-[#2d3748]/50' : isDark ? 'bg-zinc-800/80' : 'bg-white';
-  const borderColor = isIndustrial ? 'border-slate-700' : isDark ? 'border-zinc-700/50' : 'border-slate-300';
-  const textColor = isDark || isIndustrial ? 'text-white' : 'text-slate-900';
-  const subTextColor = isIndustrial ? 'text-slate-400' : isDark ? 'text-zinc-500' : 'text-slate-600';
-  const headerBorder = isIndustrial ? 'border-slate-800' : isDark ? 'border-zinc-800' : 'border-slate-300';
-  const navBg = isIndustrial ? 'bg-[#1a202c]' : isDark ? 'bg-zinc-900' : 'bg-white';
-  const navBorder = isIndustrial ? 'border-slate-800' : isDark ? 'border-zinc-800' : 'border-slate-300';
+  const T = isDark ? DARK_THEME : LIGHT_THEME;
 
   // Iniciar simulación al montar, limpiar al desmontar
   useEffect(() => {
@@ -457,34 +352,24 @@ export const DashboardScreen: React.FC = () => {
   }, []);
 
   // Evaluar estados usando los rangos del store (dinámicos)
-  const phStatus     = evaluatePh(ph, alertRanges.ph);
-  const densityStatus = evaluateDensity(density, alertRanges.density);
+  const phStatus = evaluatePh(ph, alertRanges.ph);
+  const tempStatus = evaluateTemperature(temperature, alertRanges.temperature);
   const turbidityStatus = evaluateTurbidity(turbidity, alertRanges.turbidity);
 
   // Estadísticas derivadas del historial (memoizadas)
   const stats = useMemo(() => {
     if (historyData.length === 0) {
-      return { avgPh: '--', peakTurbidity: '--', alerts: totalAlerts.toString() };
+      return { avgPh: '--', avgTemp: '--', peakTurbidity: '--', alerts: totalAlerts.toString() };
     }
     const avgPh = (
       historyData.reduce((sum, r) => sum + r.ph, 0) / historyData.length
     ).toFixed(2);
+    const avgTemp = (
+      historyData.reduce((sum, r) => sum + r.temperature, 0) / historyData.length
+    ).toFixed(1);
     const peakTurbidity = Math.max(...historyData.map((r) => r.turbidity)).toFixed(1);
-    return { avgPh, peakTurbidity, alerts: totalAlerts.toString() };
+    return { avgPh, avgTemp, peakTurbidity, alerts: totalAlerts.toString() };
   }, [historyData, totalAlerts]);
-
-  // Color e indicador de estado de conexión
-  const connDotColor = isScanning
-    ? 'bg-amber-400'
-    : isConnected
-    ? 'bg-emerald-400'
-    : 'bg-zinc-600';
-
-  const connLabel = isScanning
-    ? 'Sincronizando...'
-    : isConnected
-    ? 'Sensor activo'
-    : 'Sin conexión';
 
   // Calcular Salud del Sistema (0-100) basado en alertas/historial
   const systemHealth = useMemo(() => {
@@ -493,293 +378,466 @@ export const DashboardScreen: React.FC = () => {
     return Math.max(0, Math.round((1 - alertRatio) * 100));
   }, [isConnected, historyData.length, totalAlerts]);
 
-  const healthColor = systemHealth > 90 ? 'text-emerald-500' : systemHealth > 70 ? 'text-amber-500' : 'text-red-500';
+  // ─── Control de Tabs y Gestos Swipe Horizontal ───
+  const NAV_TABS: NavTab[] = ['monitor', 'alertas', 'informes', 'ble'];
+
+  const handleSelectTab = (tab: NavTab) => {
+    setActiveTab(tab);
+    const index = NAV_TABS.indexOf(tab);
+    if (index !== -1 && horizontalScrollRef.current) {
+      horizontalScrollRef.current.scrollTo({
+        x: index * screenWidth,
+        animated: true,
+      });
+    }
+  };
+
+  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = e.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / screenWidth);
+    if (NAV_TABS[index] && NAV_TABS[index] !== activeTab) {
+      setActiveTab(NAV_TABS[index]);
+    }
+  };
+
+  const gaugeWidth = (screenWidth - 44) / 2;
 
   return (
-    <SafeAreaView className={`flex-1 ${bgColor}`}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={isDark ? "#09090b" : "#f8fafc"} />
+    <View style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor="transparent"
+        translucent={true}
+      />
 
-      {/* ─── HEADER ─── */}
-      <View className={`flex-row items-center justify-between px-5 pt-4 pb-3 border-b ${headerBorder}`}>
-        <View className="flex-row items-center">
-          <Image
-            source={require('../assets/TPH_Monitor_Icon.png')}
-            className="w-10 h-10 mr-3"
-            resizeMode="contain"
-          />
-          <View>
-            <View className="flex-row items-center">
-              <Text className={`${textColor} text-xl font-bold tracking-tight`}>T.P.H</Text>
-              <Text className="text-sky-500 text-xl font-bold tracking-tight ml-1.5">Monitor</Text>
+      {/* ─── HEADER PREMIUM ─── */}
+      <View
+        style={{
+          paddingTop: topPadding,
+          paddingHorizontal: 16,
+          paddingBottom: 12,
+          backgroundColor: T.headerBg,
+          borderBottomWidth: 1,
+          borderBottomColor: T.headerBorder,
+        }}
+      >
+        <View className="flex-row items-center justify-between">
+          {/* Logo & Identidad de Marca */}
+          <View className="flex-row items-center flex-1 mr-2">
+            <View
+              style={{
+                width: 46,
+                height: 46,
+                backgroundColor: isDark
+                  ? 'rgba(14, 165, 233, 0.12)'
+                  : 'rgba(14, 165, 233, 0.08)',
+                borderColor: isDark
+                  ? 'rgba(14, 165, 233, 0.35)'
+                  : 'rgba(14, 165, 233, 0.25)',
+                borderRadius: 14,
+                borderTopWidth: 1,
+                borderLeftWidth: 0.5,
+                borderTopColor: 'rgba(255,255,255,0.12)',
+                borderLeftColor: 'rgba(255,255,255,0.06)',
+                shadowColor: '#0EA5E9',
+                shadowOpacity: isDark ? 0.3 : 0.15,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 6,
+              }}
+              className="items-center justify-center p-1 mr-3"
+            >
+              <Image
+                source={require('../assets/TPH_Monitor_Icon.png')}
+                style={{ width: 36, height: 36 }}
+                resizeMode="contain"
+              />
             </View>
-            <Text className={`${subTextColor} text-[8px] font-bold uppercase tracking-[1px] mt-0.5`}>
-              Water Quality Monitor
-            </Text>
+
+            {/* Texto de la Marca & Estado */}
+            <View className="justify-center">
+              <View className="flex-row items-center">
+                <Text style={{ color: T.textPrimary, fontSize: 18, fontWeight: 'bold', letterSpacing: -0.5 }}>
+                  T.P.H
+                </Text>
+                <Text style={{ color: '#0EA5E9', fontSize: 18, fontWeight: '900', letterSpacing: -0.5, marginLeft: 4 }}>
+                  MONITOR
+                </Text>
+                <View style={{
+                  marginLeft: 8,
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 6,
+                  backgroundColor: 'rgba(14,165,233,0.12)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(14,165,233,0.25)',
+                }}>
+                  <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#0EA5E9', letterSpacing: 0.5 }}>IoT</Text>
+                </View>
+              </View>
+
+              <View className="flex-row items-center mt-0.5">
+                <View style={{
+                  width: 6, height: 6, borderRadius: 3, marginRight: 6,
+                  backgroundColor: isScanning ? '#FBBF24' : isConnected ? '#10B981' : '#374151',
+                  shadowColor: isConnected ? '#10B981' : 'transparent',
+                  shadowOpacity: 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+                }} />
+                <Text style={{ color: T.textSecondary, fontSize: 10, fontWeight: '500' }}>
+                  {isConnected ? 'Telemetría H2O activa' : 'Monitoreo de calidad de agua'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Lado Derecho: Salud del Sistema & Selector de Tema */}
+          <View className="flex-row items-center">
+            {isConnected && (
+              <View
+                style={{
+                  marginRight: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 12,
+                  backgroundColor: isDark ? 'rgba(30,38,52,0.9)' : 'rgba(241,245,249,0.9)',
+                  borderWidth: 1,
+                  borderColor: T.headerBorder,
+                  alignItems: 'flex-end',
+                }}
+              >
+                <Text style={{ color: T.textSecondary, fontSize: 8, fontWeight: '600' }}>
+                  Salud
+                </Text>
+                <Text style={{
+                  color: systemHealth > 90 ? '#10B981' : systemHealth > 70 ? '#FBBF24' : '#EF4444',
+                  fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold', lineHeight: 18,
+                }}>
+                  {systemHealth}%
+                </Text>
+              </View>
+            )}
+
+            {/* Selector de Tema (Oscuro / Claro) */}
+            <TouchableOpacity
+              onPress={() => {
+                const next: AppTheme = theme === 'dark' ? 'light' : 'dark';
+                setTheme(next);
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 12,
+                backgroundColor: isDark ? '#27272a' : '#ffffff',
+                borderWidth: 1,
+                borderColor: isDark ? '#3f3f46' : '#cbd5e1',
+              }}
+              activeOpacity={0.65}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <View style={{ marginRight: 6 }}>
+                {isDark ? (
+                  <MoonIcon size={14} color="#38bdf8" />
+                ) : (
+                  <SunIcon size={14} color="#f59e0b" />
+                )}
+              </View>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? '#d4d4d8' : '#334155' }}>
+                {isDark ? 'Oscuro' : 'Claro'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {/* Salud del Sistema */}
-        {isConnected && (
-          <View className="items-end mr-4">
-            <Text className={`${subTextColor} text-[8px] font-bold uppercase`}>Salud</Text>
-            <Text className={`${healthColor} text-lg font-mono font-bold`}>{systemHealth}%</Text>
-          </View>
-        )}
-
-        {/* Selector de Tema */}
-        <TouchableOpacity
-          onPress={() => {
-            const next: AppTheme = theme === 'dark' ? 'light' : theme === 'light' ? 'industrial' : 'dark';
-            setTheme(next);
-          }}
-          className={`p-2 rounded-xl ${theme === 'industrial' ? 'bg-slate-800' : isDark ? 'bg-zinc-800' : 'bg-slate-100'} border ${borderColor}`}
-          activeOpacity={0.7}
-        >
-          <Text className="text-lg">{theme === 'dark' ? '🌙' : theme === 'light' ? '☀️' : '🏭'}</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* ─── BODY: SELECTOR DE INTERFAZ ─── */}
-      {isIndustrial ? (
-        /* INTERFAZ INDUSTRIAL (SCADA / HMI) */
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          {/* Panel de Sensores (Control de Proceso) */}
-          <View className="bg-[#0f172a] border-b border-slate-800">
-            <View className="px-4 py-3 bg-[#1e293b]/50 border-b border-slate-800">
-              <Text className="text-slate-500 text-[10px] font-bold tracking-[3px] uppercase">SENSOR_ARRAY_STREAM</Text>
-            </View>
-
-            <IndustrialMetricRow label="Potencial de Hidrógeno" value={ph} unit="pH" status={phStatus} limit={alertRanges.ph.max.toString()} />
-            <IndustrialMetricRow label="Densidad de Masa" value={density} unit="g/cm³" status={densityStatus} limit={alertRanges.density.max.toString()} />
-            <IndustrialMetricRow label="Índice de Turbidez" value={turbidity} unit="NTU" status={turbidityStatus} limit={alertRanges.turbidity.max.toString()} />
-
-            {/* Control Principal */}
-            <TouchableOpacity
-              onPress={isConnected ? disconnect : connect}
-              activeOpacity={0.7}
-              className={`py-4 items-center justify-center border-t border-slate-800 ${isConnected ? 'bg-red-500/5' : 'bg-sky-500/5'}`}
-            >
-              <Text style={{ fontFamily: 'monospace' }} className={`text-[11px] font-bold tracking-[2px] ${isConnected ? 'text-red-500' : 'text-sky-500'}`}>
-                {isConnected ? '>> TERMINATE_PROCESS' : '>> EXECUTE_SCAN'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Panel de Datos (Trends & Logs) */}
-          <View className="flex-1 px-4 pt-6 pb-20">
-            <View className="flex-row items-center mb-6">
-              <View className="w-1.5 h-6 bg-sky-600 mr-4" />
-              <View>
-                <Text className="text-slate-300 text-xs font-bold tracking-[1px] uppercase">
-                  {RIGHT_PANEL_HEADER[activeTab].title}
+      {/* ─── BODY SWIPEABLE HORIZONTAL PAGER ─── */}
+      <ScrollView
+        ref={horizontalScrollRef}
+        horizontal={true}
+        pagingEnabled={true}
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleScrollEnd}
+        style={{ flex: 1 }}
+      >
+        {/* ─── PÁGINA 0: MONITOR ─── */}
+        <View style={{ width: screenWidth, flex: 1 }}>
+          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} showsVerticalScrollIndicator={false}>
+            {/* ── SECCIÓN 1: MEDIDORES DE CALIDAD EN TIEMPO REAL ── */}
+            <View style={{ marginBottom: 18 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingHorizontal: 2 }}>
+                <Text style={{ color: T.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>
+                  Medidores Analíticos en Tiempo Real
                 </Text>
-                <Text className="text-slate-600 text-[9px] font-mono mt-0.5 uppercase">
-                  System_Output: {RIGHT_PANEL_HEADER[activeTab].sub}
-                </Text>
+                {isConnected && (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20,
+                    backgroundColor: 'rgba(14,165,233,0.12)',
+                    borderWidth: 1, borderColor: 'rgba(14,165,233,0.25)',
+                  }}>
+                    <View style={{
+                      width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#10B981',
+                      marginRight: 5,
+                      shadowColor: '#10B981', shadowOpacity: 0.9, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+                    }} />
+                    <Text style={{ color: '#0EA5E9', fontSize: 9, fontWeight: '700', letterSpacing: 0.8 }}>SONDA ACTIVA</Text>
+                  </View>
+                )}
               </View>
-            </View>
 
-            {/* Contenido Modular */}
-            <View className="min-h-[300px]">
-              {activeTab === 'monitor' && (
-                <>
-                  <View className="bg-slate-900/50 border border-slate-800 p-4 mb-4">
-                    <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
-                  </View>
-                  <View className="flex-row -mx-1 mb-4">
-                    <StatCard label="AVG_PH" value={stats.avgPh} isDark={true} accent="text-slate-300" />
-                    <StatCard label="PEAK_TUR" value={stats.peakTurbidity} unit="NTU" isDark={true} accent="text-slate-300" />
-                  </View>
-                  <View className="flex-row border border-slate-800">
-                    <TouchableOpacity
-                      onPress={() => setIsConfigOpen(true)}
-                      className="flex-1 py-4 border-r border-slate-800 items-center"
-                    >
-                      <Text className="text-slate-500 text-[10px] font-bold">SET_LIMITS</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setActiveTab('informes')}
-                      className="flex-1 py-4 items-center"
-                    >
-                      <Text className="text-slate-500 text-[10px] font-bold">VIEW_LOGS</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-              {activeTab === 'alertas' && <AlertsView />}
-              {activeTab === 'informes' && <ReportsView />}
-              {activeTab === 'ble' && (
-                <View className="py-10 border border-dashed border-slate-700 items-center">
-                  <Text className="text-slate-600 text-[10px] font-mono uppercase">Waiting for BLE_SYNC_SIGNAL...</Text>
+              {/* Fila 1: Medidores Visuales Neón (pH Semicircle Speedometer y Temperature Radial Gauge) */}
+              <View style={{ flexDirection: 'row', marginHorizontal: -6 }}>
+                <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                  <PhLevelGauge
+                    value={ph}
+                    idealMin={alertRanges.ph.min}
+                    idealMax={alertRanges.ph.max}
+                    width={gaugeWidth}
+                    isDark={isDark}
+                  />
                 </View>
-              )}
-            </View>
-          </View>
-        </ScrollView>
-      ) : (
-        /* INTERFAZ CONSUMO (CARDS) */
-        <ScrollView className="flex-1 px-4 pt-4" showsVerticalScrollIndicator={false}>
-
-          {/* ── SECCIÓN 1: MÉTRICAS ACTUALES ── */}
-          <View className="mb-6">
-            <View className="flex-row justify-between items-center mb-3 px-1">
-              <Text className={`${subTextColor} text-[10px] font-bold uppercase tracking-widest`}>
-                Lecturas en Tiempo Real
-              </Text>
-              {isConnected && (
-                <View className={`flex-row items-center ${brandBg} px-2 py-0.5 rounded-full`}>
-                  <View className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5" />
-                  <Text className={`${brandText} text-[9px] font-bold`}>SISTEMA ACTIVO</Text>
+                <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                  <TemperatureGauge
+                    value={temperature}
+                    min={0}
+                    max={50}
+                    status={tempStatus}
+                    idealRange={`${alertRanges.temperature.min}–${alertRanges.temperature.max}°C`}
+                    width={gaugeWidth}
+                    isDark={isDark}
+                  />
                 </View>
-              )}
-            </View>
+              </View>
 
-            {/* Grid de Métricas: 2 columnas para mobile */}
-            <View className="flex-row flex-wrap -mx-1.5">
-              <View className="w-1/2 px-1.5">
-                <MetricCard
-                  title="pH"
-                  value={ph}
-                  unit=""
-                  status={phStatus}
-                  idealRange={`${alertRanges.ph.min}–${alertRanges.ph.max}`}
-                  theme={theme}
-                />
-              </View>
-              <View className="w-1/2 px-1.5">
-                <MetricCard
-                  title="Densidad"
-                  value={density}
-                  unit="g/cm³"
-                  status={densityStatus}
-                  idealRange={`${alertRanges.density.min}–${alertRanges.density.max}`}
-                  theme={theme}
-                />
-              </View>
-              <View className="w-full px-1.5">
-                <MetricCard
-                  title="Turbidez"
-                  value={turbidity}
-                  unit="NTU"
-                  status={turbidityStatus}
-                  idealRange={`≤ ${alertRanges.turbidity.max} NTU`}
-                  theme={theme}
-                />
-              </View>
-            </View>
+              {/* Fila 2: Gráfico Spline Area Chart (Conductividad y Sólidos Disueltos) */}
+              <ConductivityChart
+                data={historyData.length > 0 ? historyData.map((h) => Math.round(300 + h.ph * 15 + h.temperature * 4 + h.turbidity * 2)) : undefined}
+                currentValue={Math.round(300 + ph * 15 + temperature * 4 + turbidity * 2)}
+                width={screenWidth}
+                isDark={isDark}
+              />
 
-            {/* Botón de acción principal (BLE/Simular) */}
-            <TouchableOpacity
-              onPress={isConnected ? disconnect : connect}
-              activeOpacity={0.75}
-              className={`mt-2 py-3.5 rounded-2xl items-center border ${
-                isConnected
-                  ? 'border-red-500/30 bg-red-500/10'
-                  : `${brandBorder} ${brandBg}`
-              }`}
-            >
-              <Text
-                className={`text-xs font-bold uppercase tracking-widest ${
-                  isConnected ? 'text-red-400' : brandText
-                }`}
+              {/* Fila 3: Medidor de Claridad Óptica y Turbidez (Estilo Espectral Segmentado) */}
+              <TurbidityMeterCard
+                value={turbidity}
+                maxThreshold={alertRanges.turbidity.max}
+                status={turbidityStatus}
+                isDark={isDark}
+              />
+
+              {/* Botón de acción principal (BLE/Simular) */}
+              <TouchableOpacity
+                onPress={isConnected ? disconnect : connect}
+                activeOpacity={0.75}
+                style={[{
+                  marginTop: 2, paddingVertical: 14, borderRadius: 20,
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1,
+                }, isConnected
+                  ? { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }
+                  : { borderColor: 'rgba(14,165,233,0.3)', backgroundColor: 'rgba(14,165,233,0.08)' }
+                ]}
               >
-                {isScanning ? 'Sincronizando...' : isConnected ? '⏹ Detener Monitoreo' : '▶ Iniciar Escaneo'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ── SECCIÓN 2: VISTA DETALLADA (TABS) ── */}
-          <View className="flex-1 pb-10">
-            <View className="flex-row items-center mb-4">
-              <View className={`w-1 h-4 ${isDark ? 'bg-zinc-500' : 'bg-slate-400'} rounded-full mr-3`} />
-              <View>
-                <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-bold`}>
-                  {RIGHT_PANEL_HEADER[activeTab].title}
+                <View style={{ marginRight: 8 }}>
+                  {isConnected ? <StopIcon size={14} color="#ef4444" /> : <PlayIcon size={14} color="#0ea5e9" />}
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.3, color: isConnected ? '#EF4444' : '#0EA5E9' }}>
+                  {isScanning ? 'Sincronizando telemetría...' : isConnected ? 'Detener monitoreo' : 'Iniciar escaneo y telemetría'}
                 </Text>
-                <Text className={`${subTextColor} text-[10px]`}>
-                  {RIGHT_PANEL_HEADER[activeTab].sub}
-                </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
-            {/* Contenido dinámico */}
-            <View className="min-h-[300px]">
-              {activeTab === 'monitor' && (
-                <>
-                  <View className={`${cardColor} border ${borderColor} rounded-2xl p-4 mb-4 shadow-sm`}>
-                    <TrendChart data={historyData} threshold={alertRanges.turbidity.max} theme={theme} />
-                  </View>
+            {/* ── SECCIÓN 2: TENDENCIAS & ESTADÍSTICAS ── */}
+            <View style={{ paddingBottom: 100 }}>
+              <Text style={{ color: T.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12, paddingHorizontal: 2 }}>
+                Tendencia Óptica de Turbidez
+              </Text>
 
-                  <View className="flex-row -mx-1.5 mb-4">
-                    <StatCard
-                      label="Prom. pH"
-                      value={stats.avgPh}
-                      accent={stats.avgPh === '--' ? subTextColor : textColor}
-                      isDark={isDark}
-                    />
-                    <StatCard
-                      label="Pico Tur."
-                      value={stats.peakTurbidity}
-                      unit="NTU"
-                      accent={
-                        stats.peakTurbidity === '--'
-                          ? subTextColor
-                          : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
-                          ? 'text-red-500'
-                          : textColor
-                      }
-                      isDark={isDark}
-                    />
-                  </View>
+              {/* Gráfico de línea SVG con glow */}
+              <AuraCard colors={T.card} radius={20} style={{ marginBottom: 12 }}>
+                <View style={{ padding: 16 }}>
+                  <GlowLineChart
+                    data={historyData}
+                    threshold={alertRanges.turbidity.max}
+                    width={screenWidth - 64}
+                    height={100}
+                  />
+                </View>
+              </AuraCard>
 
-                  <View className="flex-row -mx-1">
-                    <ActionButton
-                      icon="⚙"
-                      label="Límites"
-                      onPress={() => setIsConfigOpen(true)}
-                      isDark={isDark}
-                    />
-                    <ActionButton
-                      icon="≡"
-                      label="Historial"
-                      onPress={() => setActiveTab('informes')}
-                      isDark={isDark}
-                    />
-                  </View>
-                </>
-              )}
+              {/* Estadísticas rápidas (3 micro cards) */}
+              <View style={{ flexDirection: 'row', marginHorizontal: -3, marginBottom: 12 }}>
+                <StatCard
+                  label="Promedio pH"
+                  value={stats.avgPh}
+                  valueColor={stats.avgPh === '--' ? T.textMuted : T.textPrimary}
+                  isDark={isDark}
+                />
+                <StatCard
+                  label="Temp Prom"
+                  value={stats.avgTemp}
+                  unit="°C"
+                  valueColor={stats.avgTemp === '--' ? T.textMuted : T.textPrimary}
+                  isDark={isDark}
+                />
+                <StatCard
+                  label="Pico NTU"
+                  value={stats.peakTurbidity}
+                  unit="NTU"
+                  valueColor={
+                    stats.peakTurbidity === '--'
+                      ? T.textMuted
+                      : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
+                      ? '#EF4444'
+                      : T.textPrimary
+                  }
+                  isDark={isDark}
+                />
+              </View>
 
-              {activeTab === 'alertas' && <AlertsView />}
-              {activeTab === 'informes' && <ReportsView />}
-              {activeTab === 'ble' && (
-                <View className={`items-center justify-center py-10 ${isDark ? 'bg-zinc-800/20' : 'bg-white shadow-sm'} rounded-3xl border ${borderColor}`}>
-                  <Text className="text-sky-500 text-3xl mb-4">⊕</Text>
-                  <Text className={`${textColor} text-sm font-bold`}>Panel Bluetooth</Text>
-                  <Text className={`${subTextColor} text-xs text-center mt-2 px-10 font-medium`}>
-                    {isConnected
-                      ? 'Sensor conectado vía BLE\nRecibiendo paquetes de datos...'
-                      : 'Buscando dispositivos cercanos\nAsegúrese que el sensor esté encendido'}
+              {/* Botones de acción */}
+              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                <ActionButton icon={<SettingsIcon size={16} color="#0ea5e9" />} label="Límites" onPress={() => setIsConfigOpen(true)} isDark={isDark} />
+                <ActionButton icon={<HistoryIcon size={16} color="#0ea5e9" />} label="Historial" onPress={() => handleSelectTab('informes')} isDark={isDark} />
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* ─── PÁGINA 1: ALERTAS Y LOGS ─── */}
+        <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+          <AlertsView />
+        </View>
+
+        {/* ─── PÁGINA 2: INFORMES ─── */}
+        <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+          <ReportsView />
+        </View>
+
+        {/* ─── PÁGINA 3: BLE ─── */}
+        <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+          <ScrollView className="flex-1 pb-10" showsVerticalScrollIndicator={false}>
+            <View className="mb-4">
+              <Text style={{ color: isDark ? '#E2E8F0' : '#0F172A', fontSize: 14, fontWeight: '600' }}>
+                Conectividad Bluetooth y Sensores
+              </Text>
+              <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 12, marginTop: 2 }}>
+                Emparejamiento de telemetría directa BLE ESP32
+              </Text>
+            </View>
+
+            {/* Tarjeta de Dispositivo con AuraCard */}
+            <AuraCard colors={T.card} radius={20} style={{ marginBottom: 16 }}>
+              <View style={{ padding: 18 }}>
+                <View className="flex-row items-center justify-between mb-4">
+                  <View className="flex-row items-center">
+                    <View className="w-11 h-11 rounded-2xl bg-sky-500/10 border border-sky-500/20 items-center justify-center mr-3">
+                      <BluetoothIcon size={20} color="#0ea5e9" />
+                    </View>
+                    <View>
+                      <Text style={{ color: isDark ? '#F1F5F9' : '#0F172A', fontWeight: 'bold', fontSize: 15 }}>
+                        TPH Sensor Array V2
+                      </Text>
+                      <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, fontFamily: 'monospace' }}>
+                        MAC: C4:4F:33:1A:89:B2
+                      </Text>
+                    </View>
+                  </View>
+                  <View className={`px-2.5 py-1 rounded-full ${isConnected ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-zinc-700/20 border border-zinc-700/40'}`}>
+                    <Text className={`text-[10px] font-semibold ${isConnected ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                      {isConnected ? 'Enlazado' : 'Desconectado'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Métricas de Enlace */}
+                <View className="flex-row -mx-1 mb-4">
+                  <View style={{ flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }}>
+                    <View className="flex-row items-center mb-1">
+                      <SignalIcon size={12} color="#0ea5e9" />
+                      <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 9, fontWeight: '600', marginLeft: 4 }}>Señal RSSI</Text>
+                    </View>
+                    <Text style={{ color: isConnected ? '#38BDF8' : isDark ? '#64748B' : '#94A3B8', fontSize: 13, fontWeight: 'bold', fontFamily: 'monospace' }}>
+                      {isConnected ? '-64 dBm' : '--'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }}>
+                    <View className="flex-row items-center mb-1">
+                      <BatteryIcon size={12} color="#10b981" />
+                      <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 9, fontWeight: '600', marginLeft: 4 }}>Batería Sonda</Text>
+                    </View>
+                    <Text style={{ color: isConnected ? '#10B981' : isDark ? '#64748B' : '#94A3B8', fontSize: 13, fontWeight: 'bold', fontFamily: 'monospace' }}>
+                      {isConnected ? '89%' : '--'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }}>
+                    <View className="flex-row items-center mb-1">
+                      <ZapIcon size={12} color="#c084fc" />
+                      <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 9, fontWeight: '600', marginLeft: 4 }}>Muestreo</Text>
+                    </View>
+                    <Text style={{ color: isConnected ? '#C084FC' : isDark ? '#64748B' : '#94A3B8', fontSize: 13, fontWeight: 'bold', fontFamily: 'monospace' }}>
+                      {isConnected ? '0.5 Hz' : '--'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Botón de Conectar / Escanear */}
+                <TouchableOpacity
+                  onPress={isConnected ? disconnect : connect}
+                  activeOpacity={0.75}
+                  style={[
+                    { paddingVertical: 14, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+                    isConnected
+                      ? { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }
+                      : { borderColor: 'rgba(14,165,233,0.3)', backgroundColor: 'rgba(14,165,233,0.08)' }
+                  ]}
+                >
+                  <View className="mr-2">
+                    {isConnected ? <StopIcon size={14} color="#ef4444" /> : <PlayIcon size={14} color="#0ea5e9" />}
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: isConnected ? '#EF4444' : '#0EA5E9' }}>
+                    {isScanning ? 'Sincronizando vía BLE...' : isConnected ? 'Desconectar sonda BLE' : 'Escanear y conectar sonda'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </AuraCard>
+
+            {/* Info Box */}
+            <AuraCard colors={T.card} radius={18} style={{ marginBottom: 40 }}>
+              <View style={{ padding: 16 }}>
+                <View className="flex-row items-center mb-2">
+                  <InfoIcon size={16} color="#0ea5e9" />
+                  <Text style={{ color: isDark ? '#F1F5F9' : '#0F172A', fontWeight: 'bold', fontSize: 12, marginLeft: 6 }}>
+                    Guía de Telemetría ESP32
                   </Text>
                 </View>
-              )}
-            </View>
-          </View>
-        </ScrollView>
-      )}
+                <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, lineHeight: 18 }}>
+                  1. Asegúrese de que el módulo ESP32 del TPH Monitor esté encendido.{'\n'}
+                  2. La sonda realiza lecturas de pH, Temperatura y Turbidez simultáneamente.{'\n'}
+                  3. Deslice horizontalmente entre pantallas para ver el registro de logs y reportes analíticos.
+                </Text>
+              </View>
+            </AuraCard>
+          </ScrollView>
+        </View>
+      </ScrollView>
 
       {/* ─── BARRA DE NAVEGACIÓN INFERIOR ─── */}
       <BottomNav
         active={activeTab}
-        onSelect={setActiveTab}
+        onSelect={handleSelectTab}
         isConnected={isConnected}
         isDark={isDark}
+        totalAlerts={totalAlerts}
+        bottomPadding={bottomPadding}
       />
 
-      {/* ─── MODALES ─── */}
+      {/* ─── MODAL DE CONFIGURACIÓN ─── */}
       <ConfigModal
         visible={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
       />
-    </SafeAreaView>
+    </View>
   );
 };

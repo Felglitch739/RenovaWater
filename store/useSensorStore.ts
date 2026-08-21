@@ -6,13 +6,13 @@ import { create } from 'zustand';
 
 /** Estado cualitativo de cada métrica */
 export type MetricStatus = 'ok' | 'warning' | 'danger';
-export type AppTheme = 'dark' | 'light' | 'industrial';
+export type AppTheme = 'dark' | 'light';
 
 /** Un registro histórico de una muestra del sensor */
 export interface HistoryRecord {
   time: string;       // Timestamp formateado HH:MM:SS
   ph: number;
-  density: number;
+  temperature: number;
   turbidity: number;
 }
 
@@ -20,7 +20,7 @@ export interface HistoryRecord {
 export interface AlertEvent {
   id: string;           // UUID simple (time + Math.random)
   time: string;         // HH:MM:SS del momento de la alerta
-  parameter: 'pH' | 'Densidad' | 'Turbidez';
+  parameter: 'pH' | 'Temperatura' | 'Turbidez';
   value: number;
   unit: string;
   status: MetricStatus; // 'warning' | 'danger'
@@ -34,8 +34,8 @@ export interface MetricRange {
 
 /** Objeto completo de rangos de alerta configurables por el usuario */
 export interface AlertRanges {
-  ph: Required<MetricRange>;      // pH siempre tiene min y max
-  density: Required<MetricRange>; // Densidad siempre tiene min y max
+  ph: Required<MetricRange>;          // pH siempre tiene min y max
+  temperature: Required<MetricRange>; // Temperatura (°C) tiene min y max
   turbidity: Pick<MetricRange, 'max'>; // Turbidez solo tiene umbral máximo
 }
 
@@ -46,7 +46,7 @@ export interface AlertRanges {
 interface SensorState {
   // --- Lecturas actuales del sensor ---
   ph: number;
-  density: number;
+  temperature: number;
   turbidity: number;
 
   // --- Metadatos de conexión ---
@@ -68,8 +68,8 @@ interface SensorState {
   totalAlerts: number;
 
   // --- Timestamp de inicio de sesión (para calcular tiempo operativo) ---
-  sessionStart: Date | null,
-  sessionStartTime: number | null,
+  sessionStart: Date | null;
+  sessionStartTime: number | null;
 
   // --- Configuración de App ---
   theme: AppTheme;
@@ -87,9 +87,9 @@ interface SensorState {
 // ─────────────────────────────────────────────
 
 const DEFAULT_ALERT_RANGES: AlertRanges = {
-  ph:       { min: 6.5,  max: 8.5  },
-  density:  { min: 0.995, max: 1.020 },
-  turbidity: { max: 5.0 },
+  ph:          { min: 6.5,  max: 8.5  },
+  temperature: { min: 18.0, max: 28.0 },
+  turbidity:   { max: 5.0 },
 };
 
 /** Máximo de registros que se guardan en el historial */
@@ -97,8 +97,6 @@ const MAX_HISTORY_LENGTH = 24;
 
 // ─────────────────────────────────────────────
 // Funciones de evaluación de calidad
-// Ahora son dinámicas y reciben los rangos como parámetro
-// para que reflejen los cambios del usuario en tiempo real.
 // ─────────────────────────────────────────────
 
 /**
@@ -118,17 +116,17 @@ export const evaluatePh = (
 };
 
 /**
- * Evalúa la densidad contra los rangos configurados.
- * - ok      → dentro del rango [min, max]
- * - warning → dentro de una banda de tolerancia de ±0.005
- * - danger  → fuera de la banda de tolerancia
+ * Evalúa la temperatura contra los rangos configurados.
+ * - ok      → dentro del rango [min, max] (ej. 18°C a 28°C)
+ * - warning → dentro de tolerancia de ±2.5°C
+ * - danger  → fuera de tolerancia
  */
-export const evaluateDensity = (
+export const evaluateTemperature = (
   val: number,
-  range: Required<MetricRange> = DEFAULT_ALERT_RANGES.density,
+  range: Required<MetricRange> = DEFAULT_ALERT_RANGES.temperature,
 ): MetricStatus => {
   if (val >= range.min && val <= range.max) return 'ok';
-  const tolerance = 0.005;
+  const tolerance = 2.5;
   if (val >= range.min - tolerance && val <= range.max + tolerance) return 'warning';
   return 'danger';
 };
@@ -152,17 +150,17 @@ export const evaluateTurbidity = (
 // Generadores de datos mock realistas
 // ─────────────────────────────────────────────
 
-/** Genera un pH con sesgo al rango neutro (6.0 – 10.0) */
+/** Genera un pH con sesgo al rango neutro (6.0 – 9.8) */
 const generatePh = (): number =>
-  parseFloat((6.0 + Math.random() * 4.0).toFixed(2));
+  parseFloat((6.2 + Math.random() * 3.4).toFixed(2));
 
-/** Genera densidad centrada en agua limpia (0.990 – 1.025) */
-const generateDensity = (): number =>
-  parseFloat((0.990 + Math.random() * 0.035).toFixed(3));
+/** Genera temperatura centrada en agua ambiente/potable (17.0°C – 31.0°C) */
+const generateTemperature = (): number =>
+  parseFloat((17.5 + Math.random() * 13.0).toFixed(1));
 
-/** Genera turbidez con sesgo a valores bajos-medios (0 – 45 NTU) */
+/** Genera turbidez con sesgo a valores bajos-medios (0 – 42 NTU) */
 const generateTurbidity = (): number =>
-  parseFloat((Math.random() * 45).toFixed(1));
+  parseFloat((Math.random() * 42).toFixed(1));
 
 /** Formatea un Date como HH:MM:SS para el historial */
 const formatTime = (date: Date): string =>
@@ -179,9 +177,9 @@ const formatTime = (date: Date): string =>
 
 export const useSensorStore = create<SensorState>((set, get) => ({
   // ── Valores iniciales del sensor ──
-  ph: 7.0,
-  density: 1.0,
-  turbidity: 0.0,
+  ph: 7.2,
+  temperature: 23.4,
+  turbidity: 1.2,
   lastUpdated: null,
   isConnected: false,
   isScanning: false,
@@ -200,65 +198,89 @@ export const useSensorStore = create<SensorState>((set, get) => ({
 
   // ──────────────────────────────────────────
   // connect()
-  // Inicia la simulación del stream Bluetooth.
-  // Primero simula un "handshake" de ~1.5s y
-  // luego emite datos cada 3 segundos.
   // ──────────────────────────────────────────
   connect: () => {
-    const current = get();
+    const { intervalId } = get();
 
-    // Limpiar cualquier intervalo previo antes de reconectar
-    if (current.intervalId) clearInterval(current.intervalId);
+    if (intervalId) {
+      clearInterval(intervalId);
+      clearTimeout(intervalId);
+    }
 
     set({ isScanning: true, isConnected: false });
 
-    // Simular el handshake Bluetooth (~1.5s)
+    // Handshake de 150ms
     const handshakeTimer = setTimeout(() => {
-      // Registrar el inicio de la sesión
       const startTime = Date.now();
-      set({ sessionStart: new Date(startTime), sessionStartTime: startTime });
+      const now = new Date(startTime);
+      const timeStr = formatTime(now);
+
+      const initialPh = generatePh();
+      const initialTemp = generateTemperature();
+      const initialTurbidity = generateTurbidity();
+
+      const initialRecord: HistoryRecord = {
+        time: timeStr,
+        ph: initialPh,
+        temperature: initialTemp,
+        turbidity: initialTurbidity,
+      };
+
+      const freshState = get();
+
+      set({
+        ph: initialPh,
+        temperature: initialTemp,
+        turbidity: initialTurbidity,
+        lastUpdated: now,
+        sessionStart: now,
+        sessionStartTime: startTime,
+        isConnected: true,
+        isScanning: false,
+        historyData: freshState.historyData.length > 0 ? freshState.historyData : [initialRecord],
+      });
 
       const id = setInterval(() => {
-        const now = new Date();
+        const timeNow = new Date();
         const { alertRanges, historyData, alertLog, totalAlerts } = get();
-        const timeStr = formatTime(now);
+        const timeFormatted = formatTime(timeNow);
 
         // 1. Generar nuevos valores del sensor
         const newPh = generatePh();
-        const newDensity = generateDensity();
+        const newTemp = generateTemperature();
         const newTurbidity = generateTurbidity();
 
-        // 2. Evaluar si cada valor está fuera de rango
+        // 2. Evaluar estado de cada parámetro
         const phStatus = evaluatePh(newPh, alertRanges.ph);
-        const densityStatus = evaluateDensity(newDensity, alertRanges.density);
+        const tempStatus = evaluateTemperature(newTemp, alertRanges.temperature);
         const turbidityStatus = evaluateTurbidity(newTurbidity, alertRanges.turbidity);
 
-        // 3. Construir eventos de alerta individuales para el log
+        // 3. Construir eventos de alerta si están fuera de rango
         const newAlerts: AlertEvent[] = [];
         if (phStatus !== 'ok') {
           newAlerts.push({
-            id: `${timeStr}-ph-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeStr,
+            id: `${timeFormatted}-ph-${Math.random().toString(36).slice(2, 6)}`,
+            time: timeFormatted,
             parameter: 'pH',
             value: newPh,
             unit: '',
             status: phStatus,
           });
         }
-        if (densityStatus !== 'ok') {
+        if (tempStatus !== 'ok') {
           newAlerts.push({
-            id: `${timeStr}-den-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeStr,
-            parameter: 'Densidad',
-            value: newDensity,
-            unit: 'g/cm³',
-            status: densityStatus,
+            id: `${timeFormatted}-temp-${Math.random().toString(36).slice(2, 6)}`,
+            time: timeFormatted,
+            parameter: 'Temperatura',
+            value: newTemp,
+            unit: '°C',
+            status: tempStatus,
           });
         }
         if (turbidityStatus !== 'ok') {
           newAlerts.push({
-            id: `${timeStr}-tur-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeStr,
+            id: `${timeFormatted}-tur-${Math.random().toString(36).slice(2, 6)}`,
+            time: timeFormatted,
             parameter: 'Turbidez',
             value: newTurbidity,
             unit: 'NTU',
@@ -268,54 +290,51 @@ export const useSensorStore = create<SensorState>((set, get) => ({
 
         // 4. Construir nuevo registro histórico
         const newRecord: HistoryRecord = {
-          time: timeStr,
+          time: timeFormatted,
           ph: newPh,
-          density: newDensity,
+          temperature: newTemp,
           turbidity: newTurbidity,
         };
 
-        // 5. Agregar al historial (máx 24) y al log de alertas (máx 50)
+        // 5. Agregar al historial y al log
         const updatedHistory: HistoryRecord[] = [
           ...historyData.slice(-(MAX_HISTORY_LENGTH - 1)),
           newRecord,
         ];
-        // Las alertas más recientes van al frente (orden cronológico inverso)
         const updatedAlertLog: AlertEvent[] = [
           ...newAlerts,
           ...alertLog,
         ].slice(0, 50);
 
-        // 6. Actualizar todo el estado en un solo set (optimización de renders)
+        // 6. Actualizar store
         set({
           ph: newPh,
-          density: newDensity,
+          temperature: newTemp,
           turbidity: newTurbidity,
-          lastUpdated: now,
+          lastUpdated: timeNow,
           isConnected: true,
           isScanning: false,
           historyData: updatedHistory,
           alertLog: updatedAlertLog,
           totalAlerts: totalAlerts + newAlerts.length,
         });
-      }, 3000);
+      }, 2000);
 
       set({ intervalId: id });
-    }, 1500);
+    }, 150);
 
-    // Guardamos el timer del handshake para poder cancelarlo si el usuario
-    // desconecta antes de que termine el handshake
     set({ intervalId: handshakeTimer as unknown as ReturnType<typeof setInterval> });
   },
 
   // ──────────────────────────────────────────
   // disconnect()
-  // Limpia el intervalo, resetea las lecturas
-  // del sensor pero conserva el historial y
-  // el total de alertas acumuladas.
   // ──────────────────────────────────────────
   disconnect: () => {
     const { intervalId } = get();
-    if (intervalId) clearInterval(intervalId);
+    if (intervalId) {
+      clearInterval(intervalId);
+      clearTimeout(intervalId);
+    }
 
     set({
       isConnected: false,
@@ -324,26 +343,21 @@ export const useSensorStore = create<SensorState>((set, get) => ({
       lastUpdated: null,
       sessionStart: null,
       sessionStartTime: null,
-      // Resetear lecturas al estado inicial
-      ph: 7.0,
-      density: 1.0,
-      turbidity: 0.0,
-      // Nota: historyData, alertLog y totalAlerts se conservan intencionalmente
-      // para que el usuario pueda revisar el historial tras desconectar.
+      ph: 7.2,
+      temperature: 23.4,
+      turbidity: 1.2,
     });
   },
 
   // ──────────────────────────────────────────
   // updateAlertRanges(newRanges)
-  // Merge parcial: solo sobreescribe los campos
-  // que el usuario cambia, preservando el resto.
   // ──────────────────────────────────────────
   updateAlertRanges: (newRanges: Partial<AlertRanges>) => {
     const current = get();
     set({
       alertRanges: {
         ph: { ...current.alertRanges.ph, ...newRanges.ph },
-        density: { ...current.alertRanges.density, ...newRanges.density },
+        temperature: { ...current.alertRanges.temperature, ...newRanges.temperature },
         turbidity: { ...current.alertRanges.turbidity, ...newRanges.turbidity },
       },
     });
@@ -351,7 +365,6 @@ export const useSensorStore = create<SensorState>((set, get) => ({
 
   // ──────────────────────────────────────────
   // clearAlertLog()
-  // Limpia el log de alertas manualmente.
   // ──────────────────────────────────────────
   clearAlertLog: () => set({ alertLog: [], totalAlerts: 0 }),
 }));
