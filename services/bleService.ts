@@ -273,6 +273,18 @@ class Esp32BleService {
       return false;
     }
 
+    // 1. Evitar múltiples conexiones concurrentes
+    if (this.currentStatus === 'connecting') {
+      console.log('[BLE] Intento de conexión ya en curso. Ignorando solicitud concurrente.');
+      return false;
+    }
+
+    // 2. Si ya está conectado al dispositivo solicitado, no reconectar
+    if (this.connectedDevice && this.connectedDevice.id === deviceId && this.currentStatus === 'connected') {
+      console.log('[BLE] El dispositivo ya está conectado.');
+      return true;
+    }
+
     this.stopScan();
     this.setStatus('connecting');
 

@@ -131,6 +131,22 @@ export const SettingsView: React.FC = () => {
 
   const isDark = theme === 'dark';
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
+
+  const handleConnectDevice = async (deviceId: string) => {
+    if (isConnecting || isConnected) return;
+    setIsConnecting(true);
+    setConnectingDeviceId(deviceId);
+    try {
+      await connectBleDevice(deviceId);
+    } catch (err) {
+      console.error('Error conectando dispositivo BLE:', err);
+    } finally {
+      setIsConnecting(false);
+      setConnectingDeviceId(null);
+    }
+  };
 
   // Cantidad de medidores activos
   const activeCount = Object.values(visibleMeters).filter(Boolean).length;
@@ -339,10 +355,13 @@ export const SettingsView: React.FC = () => {
 
                     {bleDevices.map((dev) => {
                       const isEsp = (dev.name || '').toLowerCase().includes('esp') || (dev.name || '').toLowerCase().includes('ph');
+                      const isThisConnecting = isConnecting && connectingDeviceId === dev.id;
+
                       return (
                         <TouchableOpacity
                           key={dev.id}
-                          onPress={() => connectBleDevice(dev.id)}
+                          onPress={() => handleConnectDevice(dev.id)}
+                          disabled={isConnecting || isConnected}
                           activeOpacity={0.7}
                           style={[
                             styles.deviceListItem,
@@ -353,6 +372,7 @@ export const SettingsView: React.FC = () => {
                               borderColor: isEsp
                                 ? '#0EA5E9'
                                 : isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                              opacity: (isConnecting && !isThisConnecting) ? 0.5 : 1,
                             },
                           ]}
                         >
@@ -372,8 +392,22 @@ export const SettingsView: React.FC = () => {
                             </Text>
                           </View>
 
-                          <View style={[styles.connectDeviceBtn, isEsp && { backgroundColor: '#0EA5E9' }]}>
-                            <Text style={styles.connectDeviceBtnText}>Conectar</Text>
+                          <View
+                            style={[
+                              styles.connectDeviceBtn,
+                              isEsp && { backgroundColor: '#0EA5E9' },
+                              isThisConnecting && { backgroundColor: '#F59E0B', minWidth: 95, flexDirection: 'row', gap: 4, justifyContent: 'center' },
+                              (isConnecting && !isThisConnecting) && { backgroundColor: '#64748B' },
+                            ]}
+                          >
+                            {isThisConnecting ? (
+                              <>
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                                <Text style={styles.connectDeviceBtnText}>Conectando...</Text>
+                              </>
+                            ) : (
+                              <Text style={styles.connectDeviceBtnText}>Conectar</Text>
+                            )}
                           </View>
                         </TouchableOpacity>
                       );
