@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { LogBox, Platform, View, Text, TouchableOpacity, InteractionManager } from 'react-native';
+import { LogBox, Platform, View, Text, TouchableOpacity, InteractionManager, StatusBar } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -151,6 +151,9 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
 function AlertsScreen() {
   const [isReady, setIsReady] = useState(false);
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20) + 10;
+
   useFocusEffect(
     useCallback(() => {
       const task = InteractionManager.runAfterInteractions(() => {
@@ -160,7 +163,7 @@ function AlertsScreen() {
     }, [])
   );
   return (
-    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: topPadding }}>
       {isReady ? <AlertsView /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{color: '#94A3B8'}}>Cargando Alertas...</Text></View>}
     </View>
   );
@@ -168,6 +171,9 @@ function AlertsScreen() {
 
 function ReportsScreen() {
   const [isReady, setIsReady] = useState(false);
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20) + 10;
+
   useFocusEffect(
     useCallback(() => {
       const task = InteractionManager.runAfterInteractions(() => {
@@ -177,7 +183,7 @@ function ReportsScreen() {
     }, [])
   );
   return (
-    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: topPadding }}>
       {isReady ? <ReportsView /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{color: '#94A3B8'}}>Cargando Informes...</Text></View>}
     </View>
   );
@@ -185,6 +191,9 @@ function ReportsScreen() {
 
 function SettingsScreen() {
   const [isReady, setIsReady] = useState(false);
+  const insets = useSafeAreaInsets();
+  const topPadding = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20) + 10;
+
   useFocusEffect(
     useCallback(() => {
       const task = InteractionManager.runAfterInteractions(() => {
@@ -194,7 +203,7 @@ function SettingsScreen() {
     }, [])
   );
   return (
-    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: topPadding }}>
       {isReady ? <SettingsView /> : <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><Text style={{color: '#94A3B8'}}>Cargando Ajustes...</Text></View>}
     </View>
   );

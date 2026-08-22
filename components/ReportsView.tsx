@@ -239,10 +239,10 @@ export const ReportsView: React.FC = () => {
     <ScrollView
       style={{ flex: 1 }}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 30 }}
+      contentContainerStyle={{ paddingBottom: 100 }}
     >
       {/* Cabecera del panel */}
-      <View style={{ marginBottom: 12 }}>
+      <View style={{ marginBottom: 14 }}>
         <Text style={[styles.headerTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
           Informe Analítico del Período
         </Text>
@@ -409,8 +409,8 @@ export const ReportsView: React.FC = () => {
 
 const styles = StyleSheet.create({
   headerTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     letterSpacing: -0.3,
   },
   headerSubtitle: {

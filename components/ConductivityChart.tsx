@@ -106,7 +106,7 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
   const padTop = 12;
   const padBottom = 16;
 
-  const chartW = Math.max(width - 32, 160);
+  const chartW = Math.max(width - 64, 140);
   const chartH = height;
 
   const plotW = chartW - padLeft - padRight;
