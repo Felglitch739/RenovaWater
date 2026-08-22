@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,15 +14,16 @@ import {
   DropletIcon,
   ThermometerIcon,
   WavesIcon,
+  ZapIcon,
   CheckCircleIcon,
 } from './Icons';
 import { AuraCard } from './AuraCard';
 
 // ─────────────────────────────────────────────
-// Configuración de estilos y etiquetas por estado
+// Configuración de estilos por severidad y por parámetro
 // ─────────────────────────────────────────────
 
-type FilterType = 'all' | 'danger' | 'warning' | 'pH' | 'Temperatura' | 'Turbidez';
+type FilterType = 'all' | 'danger' | 'warning' | 'pH' | 'Temperatura' | 'Conductividad' | 'Turbidez';
 
 const SEVERITY_CONFIG: Record<
   Exclude<MetricStatus, 'ok'>,
@@ -32,7 +33,6 @@ const SEVERITY_CONFIG: Record<
     badgeText: string;
     badgeBorder: string;
     label: string;
-    iconBg: string;
   }
 > = {
   warning: {
@@ -41,7 +41,6 @@ const SEVERITY_CONFIG: Record<
     badgeText: '#FCD34D',
     badgeBorder: 'rgba(251,191,36,0.25)',
     label: 'PRECAUCIÓN',
-    iconBg: 'rgba(251,191,36,0.1)',
   },
   danger: {
     color: '#EF4444',
@@ -49,9 +48,70 @@ const SEVERITY_CONFIG: Record<
     badgeText: '#F87171',
     badgeBorder: 'rgba(239,68,68,0.25)',
     label: 'CRÍTICO',
-    iconBg: 'rgba(239,68,68,0.1)',
   },
 };
+
+/**
+ * Estilos y paleta adaptativa de alto contraste por parámetro para Modo Oscuro y Modo Claro:
+ * - pH: Azul (Oscuro: #38BDF8 / Claro: #0284C7)
+ * - Temperatura: Rojo (Oscuro: #F87171 / Claro: #DC2626)
+ * - Conductividad: Amarillo/Ámbar (Oscuro: #FACC15 / Claro: #D97706)
+ * - Turbidez: Verde (Oscuro: #34D399 / Claro: #059669)
+ */
+function getParameterStyle(param: string, isDark: boolean) {
+  switch (param) {
+    case 'pH':
+      return {
+        color: isDark ? '#38BDF8' : '#0284C7',
+        iconBg: isDark ? 'rgba(14, 165, 233, 0.20)' : '#E0F2FE',
+        iconBorder: isDark ? 'rgba(14, 165, 233, 0.45)' : '#7DD3FC',
+        tagBg: isDark ? 'rgba(14, 165, 233, 0.14)' : '#F0F9FF',
+        tagBorder: isDark ? 'rgba(14, 165, 233, 0.30)' : '#BAE6FD',
+        tagText: isDark ? '#38BDF8' : '#0369A1',
+        renderIcon: (c: string) => <DropletIcon size={16} color={c} />,
+      };
+    case 'Temperatura':
+      return {
+        color: isDark ? '#F87171' : '#DC2626',
+        iconBg: isDark ? 'rgba(239, 68, 68, 0.20)' : '#FEE2E2',
+        iconBorder: isDark ? 'rgba(239, 68, 68, 0.45)' : '#FCA5A5',
+        tagBg: isDark ? 'rgba(239, 68, 68, 0.14)' : '#FEF2F2',
+        tagBorder: isDark ? 'rgba(239, 68, 68, 0.30)' : '#FECACA',
+        tagText: isDark ? '#F87171' : '#991B1B',
+        renderIcon: (c: string) => <ThermometerIcon size={16} color={c} />,
+      };
+    case 'Conductividad':
+      return {
+        color: isDark ? '#FACC15' : '#D97706',
+        iconBg: isDark ? 'rgba(234, 179, 8, 0.22)' : '#FEF3C7',
+        iconBorder: isDark ? 'rgba(234, 179, 8, 0.50)' : '#FDE68A',
+        tagBg: isDark ? 'rgba(234, 179, 8, 0.14)' : '#FFFBEB',
+        tagBorder: isDark ? 'rgba(234, 179, 8, 0.30)' : '#FDE68A',
+        tagText: isDark ? '#FACC15' : '#92400E',
+        renderIcon: (c: string) => <ZapIcon size={16} color={c} />,
+      };
+    case 'Turbidez':
+      return {
+        color: isDark ? '#34D399' : '#059669',
+        iconBg: isDark ? 'rgba(16, 185, 129, 0.20)' : '#D1FAE5',
+        iconBorder: isDark ? 'rgba(16, 185, 129, 0.45)' : '#6EE7B7',
+        tagBg: isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5',
+        tagBorder: isDark ? 'rgba(16, 185, 129, 0.30)' : '#A7F3D0',
+        tagText: isDark ? '#34D399' : '#065F46',
+        renderIcon: (c: string) => <WavesIcon size={16} color={c} />,
+      };
+    default:
+      return {
+        color: isDark ? '#38BDF8' : '#0284C7',
+        iconBg: isDark ? 'rgba(14, 165, 233, 0.20)' : '#E0F2FE',
+        iconBorder: isDark ? 'rgba(14, 165, 233, 0.45)' : '#7DD3FC',
+        tagBg: isDark ? 'rgba(14, 165, 233, 0.14)' : '#F0F9FF',
+        tagBorder: isDark ? 'rgba(14, 165, 233, 0.30)' : '#BAE6FD',
+        tagText: isDark ? '#38BDF8' : '#0369A1',
+        renderIcon: (c: string) => <ActivityIcon size={16} color={c} />,
+      };
+  }
+}
 
 // ─────────────────────────────────────────────
 // Sub-componente: Fila individual de log
@@ -65,58 +125,79 @@ interface AlertCardItemProps {
 
 const AlertCardItem: React.FC<AlertCardItemProps> = ({ event, isDark, alertRanges }) => {
   const sev = SEVERITY_CONFIG[event.status as Exclude<MetricStatus, 'ok'>] || SEVERITY_CONFIG.warning;
+  const paramStyle = getParameterStyle(event.parameter, isDark);
 
-  let paramIcon = <ActivityIcon size={15} color={sev.color} />;
   let deviationText = 'Fuera del rango óptimo';
 
   if (event.parameter === 'pH') {
-    paramIcon = <DropletIcon size={15} color={sev.color} />;
     if (event.value < alertRanges.ph.min) {
       deviationText = `Bajo mínimo (${alertRanges.ph.min} pH)`;
     } else if (event.value > alertRanges.ph.max) {
       deviationText = `Sobre máximo (${alertRanges.ph.max} pH)`;
     }
   } else if (event.parameter === 'Temperatura') {
-    paramIcon = <ThermometerIcon size={15} color={sev.color} />;
     if (event.value < alertRanges.temperature.min) {
       deviationText = `Bajo mínimo (${alertRanges.temperature.min}°C)`;
     } else if (event.value > alertRanges.temperature.max) {
       deviationText = `Sobre máximo (${alertRanges.temperature.max}°C)`;
     }
   } else if (event.parameter === 'Turbidez') {
-    paramIcon = <WavesIcon size={15} color={sev.color} />;
     deviationText = `Sobre límite (${alertRanges.turbidity.max} NTU)`;
+  } else if (event.parameter === 'Conductividad') {
+    if (alertRanges.conductivity && event.value < alertRanges.conductivity.min) {
+      deviationText = `Bajo mínimo (${alertRanges.conductivity.min} µS/cm)`;
+    } else if (alertRanges.conductivity && event.value > alertRanges.conductivity.max) {
+      deviationText = `Sobre máximo (${alertRanges.conductivity.max} µS/cm)`;
+    } else {
+      deviationText = 'Fuera del rango estándar potable';
+    }
   }
 
   return (
-    <View style={[styles.logItemContainer, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-      {/* Icono del parámetro */}
+    <View style={[styles.logItemContainer, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+      {/* Icono del parámetro con caja de alto contraste adaptativa */}
       <View
         style={[
           styles.paramIconBox,
           {
-            backgroundColor: sev.iconBg,
-            borderColor: sev.badgeBorder,
+            backgroundColor: paramStyle.iconBg,
+            borderColor: paramStyle.iconBorder,
           },
         ]}
       >
-        {paramIcon}
+        {paramStyle.renderIcon(paramStyle.color)}
       </View>
 
       {/* Info central */}
       <View style={styles.logInfoCenter}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
           <Text style={[styles.paramTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
             {event.parameter}
           </Text>
-          <View style={[styles.timeBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-            <Text style={[styles.timeText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+
+          {/* Micro Tag para acentuar el parámetro con alto contraste */}
+          <View
+            style={[
+              styles.paramBadgePill,
+              {
+                backgroundColor: paramStyle.tagBg,
+                borderColor: paramStyle.tagBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.paramBadgeText, { color: paramStyle.tagText }]}>
+              {event.parameter.toUpperCase()}
+            </Text>
+          </View>
+
+          <View style={[styles.timeBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }]}>
+            <Text style={[styles.timeText, { color: isDark ? '#94A3B8' : '#475569' }]}>
               {event.time}
             </Text>
           </View>
         </View>
 
-        <Text style={[styles.deviationDesc, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+        <Text style={[styles.deviationDesc, { color: isDark ? '#64748B' : '#475569' }]}>
           {deviationText}
         </Text>
       </View>
@@ -128,7 +209,7 @@ const AlertCardItem: React.FC<AlertCardItemProps> = ({ event, isDark, alertRange
             {event.value}
           </Text>
           {event.unit ? (
-            <Text style={[styles.logUnitText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+            <Text style={[styles.logUnitText, { color: isDark ? '#94A3B8' : '#475569' }]}>
               {event.unit}
             </Text>
           ) : null}
@@ -138,12 +219,12 @@ const AlertCardItem: React.FC<AlertCardItemProps> = ({ event, isDark, alertRange
           style={[
             styles.severityPill,
             {
-              backgroundColor: sev.badgeBg,
-              borderColor: sev.badgeBorder,
+              backgroundColor: isDark ? sev.badgeBg : (event.status === 'danger' ? '#FEE2E2' : '#FEF3C7'),
+              borderColor: isDark ? sev.badgeBorder : (event.status === 'danger' ? '#FCA5A5' : '#FDE68A'),
             },
           ]}
         >
-          <Text style={[styles.severityLabel, { color: sev.badgeText }]}>
+          <Text style={[styles.severityLabel, { color: isDark ? sev.badgeText : (event.status === 'danger' ? '#DC2626' : '#D97706') }]}>
             {sev.label}
           </Text>
         </View>
@@ -157,23 +238,47 @@ const AlertCardItem: React.FC<AlertCardItemProps> = ({ event, isDark, alertRange
 // ─────────────────────────────────────────────
 
 export const AlertsView: React.FC = () => {
-  const { alertLog, totalAlerts, clearAlertLog, isConnected, theme, alertRanges } = useSensorStore();
+  const { alertLog, clearAlertLog, isConnected, theme, alertRanges, visibleMeters } = useSensorStore();
   const isDark = theme === 'dark';
 
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
+  // Reset filter if the currently active parameter-filter was disabled in Settings
+  useEffect(() => {
+    const paramMap: Record<string, boolean> = {
+      pH: visibleMeters.ph,
+      Temperatura: visibleMeters.temperature,
+      Conductividad: visibleMeters.conductivity,
+      Turbidez: visibleMeters.turbidity,
+    };
+    if (activeFilter in paramMap && !paramMap[activeFilter]) {
+      setActiveFilter('all');
+    }
+  }, [visibleMeters, activeFilter]);
+
+  // Filtrar logs únicamente de los medidores que el usuario TIENE ACTIVOS en Ajustes
+  const activeAlertLog = useMemo(() => {
+    return alertLog.filter((event) => {
+      if (event.parameter === 'pH') return visibleMeters.ph;
+      if (event.parameter === 'Temperatura') return visibleMeters.temperature;
+      if (event.parameter === 'Conductividad') return visibleMeters.conductivity;
+      if (event.parameter === 'Turbidez') return visibleMeters.turbidity;
+      return true;
+    });
+  }, [alertLog, visibleMeters]);
+
   const stats = useMemo(() => {
-    const dangerCount = alertLog.filter((e) => e.status === 'danger').length;
-    const warningCount = alertLog.filter((e) => e.status === 'warning').length;
-    return { dangerCount, warningCount, totalCount: alertLog.length };
-  }, [alertLog]);
+    const dangerCount = activeAlertLog.filter((e) => e.status === 'danger').length;
+    const warningCount = activeAlertLog.filter((e) => e.status === 'warning').length;
+    return { dangerCount, warningCount, totalCount: activeAlertLog.length };
+  }, [activeAlertLog]);
 
   const filteredLogs = useMemo(() => {
-    if (activeFilter === 'all') return alertLog;
-    if (activeFilter === 'danger') return alertLog.filter((e) => e.status === 'danger');
-    if (activeFilter === 'warning') return alertLog.filter((e) => e.status === 'warning');
-    return alertLog.filter((e) => e.parameter === activeFilter);
-  }, [alertLog, activeFilter]);
+    if (activeFilter === 'all') return activeAlertLog;
+    if (activeFilter === 'danger') return activeAlertLog.filter((e) => e.status === 'danger');
+    if (activeFilter === 'warning') return activeAlertLog.filter((e) => e.status === 'warning');
+    return activeAlertLog.filter((e) => e.parameter === activeFilter);
+  }, [activeAlertLog, activeFilter]);
 
   const handleConfirmClear = () => {
     Alert.alert(
@@ -202,14 +307,14 @@ export const AlertsView: React.FC = () => {
               </View>
             )}
           </View>
-          <Text style={[styles.subHeading, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+          <Text style={[styles.subHeading, { color: isDark ? '#64748B' : '#64748B' }]}>
             {stats.totalCount > 0
-              ? `${stats.totalCount} incidencias en sesión activa`
+              ? `${stats.totalCount} incidencias activas`
               : 'Sin anomalías registradas'}
           </Text>
         </View>
 
-        {alertLog.length > 0 && (
+        {activeAlertLog.length > 0 && (
           <TouchableOpacity
             onPress={handleConfirmClear}
             activeOpacity={0.75}
@@ -238,15 +343,15 @@ export const AlertsView: React.FC = () => {
         </View>
 
         <View style={[styles.statChip, { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }]}>
-          <Text style={[styles.statChipLabel, { color: '#FCD34D' }]}>Alertas</Text>
-          <Text style={[styles.statChipValue, { color: '#FBBF24' }]}>
+          <Text style={[styles.statChipLabel, { color: isDark ? '#FCD34D' : '#D97706' }]}>Alertas</Text>
+          <Text style={[styles.statChipValue, { color: isDark ? '#FBBF24' : '#D97706' }]}>
             {stats.warningCount}
           </Text>
         </View>
       </View>
 
       {/* ── Barra de Filtros en Scroll Horizontal Nativo ── */}
-      {alertLog.length > 0 && (
+      {activeAlertLog.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -259,13 +364,13 @@ export const AlertsView: React.FC = () => {
               styles.filterPill,
               activeFilter === 'all'
                 ? styles.filterPillActive
-                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
+                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
             ]}
           >
             <Text
               style={[
                 styles.filterText,
-                { color: activeFilter === 'all' ? '#0EA5E9' : isDark ? '#94A3B8' : '#64748B' },
+                { color: activeFilter === 'all' ? (isDark ? '#38BDF8' : '#0284C7') : isDark ? '#94A3B8' : '#475569' },
               ]}
             >
               Todos ({stats.totalCount})
@@ -277,14 +382,14 @@ export const AlertsView: React.FC = () => {
             style={[
               styles.filterPill,
               activeFilter === 'danger'
-                ? { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.3)' }
-                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
+                ? { backgroundColor: isDark ? 'rgba(239,68,68,0.20)' : '#FEE2E2', borderColor: isDark ? 'rgba(239,68,68,0.45)' : '#FCA5A5' }
+                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
             ]}
           >
             <Text
               style={[
                 styles.filterText,
-                { color: activeFilter === 'danger' ? '#EF4444' : isDark ? '#94A3B8' : '#64748B' },
+                { color: activeFilter === 'danger' ? (isDark ? '#F87171' : '#DC2626') : isDark ? '#94A3B8' : '#475569' },
               ]}
             >
               Críticos ({stats.dangerCount})
@@ -296,92 +401,114 @@ export const AlertsView: React.FC = () => {
             style={[
               styles.filterPill,
               activeFilter === 'warning'
-                ? { backgroundColor: 'rgba(251,191,36,0.12)', borderColor: 'rgba(251,191,36,0.3)' }
-                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
+                ? { backgroundColor: isDark ? 'rgba(251,191,36,0.20)' : '#FEF3C7', borderColor: isDark ? 'rgba(251,191,36,0.45)' : '#FDE68A' }
+                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
             ]}
           >
             <Text
               style={[
                 styles.filterText,
-                { color: activeFilter === 'warning' ? '#FBBF24' : isDark ? '#94A3B8' : '#64748B' },
+                { color: activeFilter === 'warning' ? (isDark ? '#FBBF24' : '#D97706') : isDark ? '#94A3B8' : '#475569' },
               ]}
             >
               Precaución ({stats.warningCount})
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setActiveFilter('pH')}
-            style={[
-              styles.filterPill,
-              activeFilter === 'pH'
-                ? styles.filterPillActive
-                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
-            ]}
-          >
-            <Text style={[styles.filterText, { color: activeFilter === 'pH' ? '#0EA5E9' : isDark ? '#94A3B8' : '#64748B' }]}>
-              pH
-            </Text>
-          </TouchableOpacity>
+          {/* Solo mostrar filtros de parámetros activos en Ajustes */}
+          {visibleMeters.ph && (
+            <TouchableOpacity
+              onPress={() => setActiveFilter('pH')}
+              style={[
+                styles.filterPill,
+                activeFilter === 'pH'
+                  ? { backgroundColor: isDark ? 'rgba(14,165,233,0.20)' : '#E0F2FE', borderColor: isDark ? 'rgba(14,165,233,0.45)' : '#7DD3FC' }
+                  : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
+              ]}
+            >
+              <Text style={[styles.filterText, { color: activeFilter === 'pH' ? (isDark ? '#38BDF8' : '#0284C7') : isDark ? '#94A3B8' : '#475569' }]}>
+                pH
+              </Text>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            onPress={() => setActiveFilter('Temperatura')}
-            style={[
-              styles.filterPill,
-              activeFilter === 'Temperatura'
-                ? styles.filterPillActive
-                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
-            ]}
-          >
-            <Text style={[styles.filterText, { color: activeFilter === 'Temperatura' ? '#0EA5E9' : isDark ? '#94A3B8' : '#64748B' }]}>
-              Temperatura
-            </Text>
-          </TouchableOpacity>
+          {visibleMeters.temperature && (
+            <TouchableOpacity
+              onPress={() => setActiveFilter('Temperatura')}
+              style={[
+                styles.filterPill,
+                activeFilter === 'Temperatura'
+                  ? { backgroundColor: isDark ? 'rgba(239,68,68,0.20)' : '#FEE2E2', borderColor: isDark ? 'rgba(239,68,68,0.45)' : '#FCA5A5' }
+                  : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
+              ]}
+            >
+              <Text style={[styles.filterText, { color: activeFilter === 'Temperatura' ? (isDark ? '#F87171' : '#DC2626') : isDark ? '#94A3B8' : '#475569' }]}>
+                Temperatura
+              </Text>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            onPress={() => setActiveFilter('Turbidez')}
-            style={[
-              styles.filterPill,
-              activeFilter === 'Turbidez'
-                ? styles.filterPillActive
-                : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
-            ]}
-          >
-            <Text style={[styles.filterText, { color: activeFilter === 'Turbidez' ? '#0EA5E9' : isDark ? '#94A3B8' : '#64748B' }]}>
-              Turbidez
-            </Text>
-          </TouchableOpacity>
+          {visibleMeters.conductivity && (
+            <TouchableOpacity
+              onPress={() => setActiveFilter('Conductividad')}
+              style={[
+                styles.filterPill,
+                activeFilter === 'Conductividad'
+                  ? { backgroundColor: isDark ? 'rgba(234,179,8,0.22)' : '#FEF3C7', borderColor: isDark ? 'rgba(234,179,8,0.50)' : '#FDE68A' }
+                  : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
+              ]}
+            >
+              <Text style={[styles.filterText, { color: activeFilter === 'Conductividad' ? (isDark ? '#FACC15' : '#D97706') : isDark ? '#94A3B8' : '#475569' }]}>
+                Conductividad
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {visibleMeters.turbidity && (
+            <TouchableOpacity
+              onPress={() => setActiveFilter('Turbidez')}
+              style={[
+                styles.filterPill,
+                activeFilter === 'Turbidez'
+                  ? { backgroundColor: isDark ? 'rgba(16,185,129,0.20)' : '#D1FAE5', borderColor: isDark ? 'rgba(16,185,129,0.45)' : '#6EE7B7' }
+                  : { backgroundColor: isDark ? '#1C222B' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1' },
+              ]}
+            >
+              <Text style={[styles.filterText, { color: activeFilter === 'Turbidez' ? (isDark ? '#34D399' : '#059669') : isDark ? '#94A3B8' : '#475569' }]}>
+                Turbidez
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
       {/* ── Lista de Registros o Estado Vacío ── */}
-      {alertLog.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <AuraCard
-            colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
-            radius={20}
-            style={{ marginBottom: 12 }}
-          >
-            <View style={styles.emptyIconBox}>
-              <CheckCircleIcon size={32} color="#10B981" />
+      {filteredLogs.length === 0 ? (
+        <AuraCard
+          colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
+          radius={20}
+          style={{ flex: 1, marginBottom: 16 }}
+        >
+          <View style={styles.emptyContainer}>
+            <View style={[
+              styles.emptyIconCircle,
+              { backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : '#D1FAE5' },
+            ]}>
+              <CheckCircleIcon size={36} color="#10B981" />
             </View>
-          </AuraCard>
 
-          <Text style={[styles.emptyTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-            Sistema Operando en Rango Óptimo
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-            {isConnected
-              ? 'Todas las lecturas (pH, Temp y Turbidez) cumplen con los umbrales configurados.'
-              : 'Inicie la telemetría para comenzar el registro de incidencias.'}
-          </Text>
-        </View>
-      ) : filteredLogs.length === 0 ? (
-        <View style={styles.noFilterResults}>
-          <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 12, textAlign: 'center' }}>
-            No se encontraron registros con el filtro seleccionado
-          </Text>
-        </View>
+            <Text style={[styles.emptyTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
+              Sistema Operando en Rango Óptimo
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: isDark ? '#64748B' : '#64748B' }]}>
+              {isConnected
+                ? activeAlertLog.length === 0
+                  ? 'Todas las lecturas activas cumplen con los umbrales configurados.'
+                  : 'No se encontraron registros con el filtro seleccionado.'
+                : 'Inicie la telemetría para comenzar el registro de incidencias.'}
+            </Text>
+          </View>
+        </AuraCard>
       ) : (
         <AuraCard
           colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
@@ -404,7 +531,7 @@ export const AlertsView: React.FC = () => {
 
             <View style={styles.listFooter}>
               <Text style={[styles.footerCountText, { color: isDark ? '#475569' : '#94A3B8' }]}>
-                {`Mostrando ${filteredLogs.length} de ${alertLog.length} eventos en sesión`}
+                {`Mostrando ${filteredLogs.length} de ${activeAlertLog.length} eventos activos`}
               </Text>
             </View>
           </ScrollView>
@@ -545,8 +672,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  paramBadgePill: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginLeft: 4,
+  },
+  paramBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   timeBadge: {
-    marginLeft: 6,
     paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 4,
@@ -589,31 +727,28 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
+    paddingVertical: 40,
+    paddingHorizontal: 24,
   },
-  emptyIconBox: {
-    padding: 16,
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   emptySubtitle: {
     fontSize: 11,
     textAlign: 'center',
     lineHeight: 16,
     maxWidth: 260,
-  },
-  noFilterResults: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
   },
   listFooter: {
     paddingVertical: 10,

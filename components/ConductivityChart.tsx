@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import Svg, {
   Path,
   Defs,
@@ -75,11 +75,31 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
   width = 340,
   height = 130,
   isDark = true,
-  accentColor = '#00E5FF',
+  accentColor = '#EAB308',
 }) => {
   // Extraer valores numéricos
   const rawValues: number[] = data.map((d) => (typeof d === 'number' ? d : d.value));
   const latestVal = currentValue !== undefined ? currentValue : rawValues[rawValues.length - 1] ?? 420;
+
+  // Transición suave de valor animado
+  const animVal = useRef(new Animated.Value(latestVal)).current;
+  const [displayVal, setDisplayVal] = useState(latestVal);
+
+  useEffect(() => {
+    Animated.timing(animVal, {
+      toValue: latestVal,
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [latestVal]);
+
+  useEffect(() => {
+    const id = animVal.addListener(({ value: v }) => {
+      setDisplayVal(Math.round(v));
+    });
+    return () => animVal.removeListener(id);
+  }, [animVal]);
 
   const padLeft = 8;
   const padRight = 8;
@@ -114,8 +134,8 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
   return (
     <AuraCard
       accentColor={accentColor}
-      colors={isDark ? ['#1E293B', '#111827'] : ['#FFFFFF', '#F8FAFC']}
-      radius={22}
+      colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
+      radius={20}
       style={{ marginBottom: 12 }}
     >
       <View style={styles.cardPadding}>
@@ -149,13 +169,13 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
                 styles.heroNumber,
                 {
                   color: isDark ? '#F8FAFC' : '#0F172A',
-                  textShadowColor: isDark ? 'rgba(0,229,255,0.5)' : 'transparent',
+                  textShadowColor: isDark ? 'rgba(234,179,8,0.4)' : 'transparent',
                   textShadowOffset: { width: 0, height: 0 },
                   textShadowRadius: 10,
                 },
               ]}
             >
-              {latestVal}
+              {displayVal}
             </Text>
             <Text style={[styles.heroUnit, { color: accentColor }]}>{unit}</Text>
           </View>
@@ -172,10 +192,10 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
                 <Stop offset="100%" stopColor={accentColor} stopOpacity="0.0" />
               </LinearGradient>
 
-              {/* Trazo sobrio fino */}
+              {/* Trazo sobrio fino amarillo neón */}
               <LinearGradient id="conductivityLineGrad" x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.9" />
-                <Stop offset="100%" stopColor={accentColor} stopOpacity="1" />
+                <Stop offset="0%" stopColor="#F59E0B" stopOpacity="0.9" />
+                <Stop offset="100%" stopColor="#FACC15" stopOpacity="1" />
               </LinearGradient>
             </Defs>
 
@@ -284,14 +304,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2.5,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,229,255,0.12)',
+    backgroundColor: 'rgba(234,179,8,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(0,229,255,0.3)',
+    borderColor: 'rgba(234,179,8,0.3)',
   },
   trendText: {
     fontSize: 8,
     fontWeight: '800',
-    color: '#00E5FF',
+    color: '#EAB308',
     letterSpacing: 0.8,
   },
   valueRow: {

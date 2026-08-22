@@ -1,12 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { AuraCard } from './AuraCard';
 import { WavesIcon } from './Icons';
 import type { MetricStatus } from '../store/useSensorStore';
 
 // ─────────────────────────────────────────────────────────────
 // TurbidityMeterCard — Medidor de Turbidez Limpio y Sobrio
-// Barra de progreso de un solo color (acento #0EA5E9) con marcadores sutiles
+// Barra de progreso de un solo color (acento #10B981) con marcadores sutiles
 // ─────────────────────────────────────────────────────────────
 
 interface TurbidityMeterCardProps {
@@ -18,10 +18,10 @@ interface TurbidityMeterCardProps {
 
 const STATUS_META = {
   ok: {
-    accentColor: '#0EA5E9',
-    badgeBg: 'rgba(14,165,233,0.12)',
-    badgeText: '#38BDF8',
-    badgeBorder: 'rgba(14,165,233,0.25)',
+    accentColor: '#10B981',
+    badgeBg: 'rgba(16,185,129,0.12)',
+    badgeText: '#34D399',
+    badgeBorder: 'rgba(16,185,129,0.25)',
     label: 'NORMAL',
     clarityLabel: 'Agua Cristalina · Potable',
   },
@@ -51,9 +51,29 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
 }) => {
   const meta = STATUS_META[status];
 
+  // Transición suave de valor animado
+  const animVal = useRef(new Animated.Value(value)).current;
+  const [displayVal, setDisplayVal] = useState(value);
+
+  useEffect(() => {
+    Animated.timing(animVal, {
+      toValue: value,
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [value]);
+
+  useEffect(() => {
+    const id = animVal.addListener(({ value: v }) => {
+      setDisplayVal(parseFloat(v.toFixed(1)));
+    });
+    return () => animVal.removeListener(id);
+  }, [animVal]);
+
   // Escala de 0 a 45 NTU
   const MAX_SCALE = 45;
-  const clampedVal = Math.min(Math.max(value, 0), MAX_SCALE);
+  const clampedVal = Math.min(Math.max(displayVal, 0), MAX_SCALE);
   const progressPercent = Math.min(Math.max((clampedVal / MAX_SCALE) * 100, 2), 100);
   const thresholdPercent = Math.min(Math.max((maxThreshold / MAX_SCALE) * 100, 0), 100);
 
@@ -68,7 +88,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.titleWrap}>
-            <WavesIcon size={16} color="#0EA5E9" />
+            <WavesIcon size={16} color="#10B981" />
             <Text style={[styles.titleText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
               Turbidez (NTU)
             </Text>
@@ -93,7 +113,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
         <View style={styles.valueRow}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <Text style={[styles.heroValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>
-              {value}
+              {displayVal.toFixed(1)}
             </Text>
             <Text style={[styles.heroUnit, { color: isDark ? '#94A3B8' : '#64748B' }]}>
               NTU
@@ -105,7 +125,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
           </Text>
         </View>
 
-        {/* Barra de progreso sobria de UN SOLO COLOR (Acento #0EA5E9) */}
+        {/* Barra de progreso sobria de UN SOLO COLOR */}
         <View style={styles.meterContainer}>
           <View style={[styles.trackBackground, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
             {/* Barra de llenado sobria monocromática */}
@@ -131,7 +151,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
           {/* Marcas de escala */}
           <View style={styles.scaleLabels}>
             <Text style={[styles.scaleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>0</Text>
-            <Text style={[styles.scaleText, { color: '#0EA5E9', fontWeight: '600' }]}>
+            <Text style={[styles.scaleText, { color: '#10B981', fontWeight: '600' }]}>
               Límite: {maxThreshold} NTU
             </Text>
             <Text style={[styles.scaleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>

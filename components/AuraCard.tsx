@@ -25,7 +25,7 @@ export const AuraCard: React.FC<AuraCardProps> = ({
   radius = 20,
   colors = ['#1C222B', '#14181F'],
   accentColor,
-  hideBorder = true,
+  hideBorder = false, // Restaurado a false para mostrar los bordes sutiles neumórficos por defecto
 }) => {
   return (
     <View style={[styles.shadowWrap, { borderRadius: radius }, style]}>
@@ -35,31 +35,15 @@ export const AuraCard: React.FC<AuraCardProps> = ({
         end={{ x: 1, y: 1 }}
         style={[
           styles.gradient,
-          { borderRadius: radius },
+          { borderRadius: radius, flex: 1 }, // Corregido: flex: 1 aquí evita que colapse el ScrollView hijo
           !hideBorder && {
-            borderTopWidth: 1,
+            borderTopWidth: 1.2,
             borderLeftWidth: 0.5,
             borderTopColor: 'rgba(255, 255, 255, 0.08)',
             borderLeftColor: 'rgba(255, 255, 255, 0.04)',
           },
         ]}
       >
-        {/* Línea de acento izquierda opcional */}
-        {accentColor && (
-          <View
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: radius / 2,
-              bottom: radius / 2,
-              width: 3.5,
-              backgroundColor: accentColor,
-              borderRadius: 2,
-            }}
-            pointerEvents="none"
-          />
-        )}
-
         <View style={styles.content}>{children}</View>
       </LinearGradient>
     </View>

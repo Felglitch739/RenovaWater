@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ViewStyle, StyleProp, Animated, Easing } from 'react-native';
 import Svg, {
   Path,
   Defs,
@@ -14,7 +14,7 @@ import { DropletIcon } from './Icons';
 
 // ─────────────────────────────────────────────────────────────
 // PhLevelGauge — Medidor de pH Espectral Profesional
-// Arco de 180° con relleno adaptativo de altura e indicador dinámico
+// Arco de 180° con etiqueta de estado centrada debajo del medidor
 // ─────────────────────────────────────────────────────────────
 
 export interface PhLevelGaugeProps {
@@ -40,7 +40,27 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   isDark = true,
   style,
 }) => {
-  const clampedVal = Math.min(Math.max(value, min), max);
+  // Transición suave de valor animado
+  const animVal = useRef(new Animated.Value(value)).current;
+  const [displayVal, setDisplayVal] = useState(value);
+
+  useEffect(() => {
+    Animated.timing(animVal, {
+      toValue: value,
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [value]);
+
+  useEffect(() => {
+    const id = animVal.addListener(({ value: v }) => {
+      setDisplayVal(parseFloat(v.toFixed(2)));
+    });
+    return () => animVal.removeListener(id);
+  }, [animVal]);
+
+  const clampedVal = Math.min(Math.max(displayVal, min), max);
   const progress = (clampedVal - min) / (max - min);
 
   // Clasificación cualitativa y color dinámico según la escala real de pH
@@ -62,7 +82,10 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   }
 
   // Geometría del velocímetro semicircular de 180°
-  const strokeWidth = 11;
+  // Escalar el grosor del arco proporcionalmente al ancho del contenedor
+  const baseWidth = 160;
+  const scaleFactor = Math.min(width / baseWidth, 2.2);
+  const strokeWidth = Math.round(11 * scaleFactor);
   const svgWidth = Math.max(width - 20, 130);
   const radius = (svgWidth - strokeWidth * 2 - 12) / 2;
   const cx = svgWidth / 2;
@@ -76,9 +99,9 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   const arcX = cx + radius * Math.cos(theta);
   const arcY = cy - radius * Math.sin(theta);
 
-  // Marcador triangular estilizado
+  // Marcador triangular estilizado (escalado con el contenedor)
   const tipRadius = radius + strokeWidth / 2 + 1;
-  const baseRadius = tipRadius + 7.5;
+  const baseRadius = tipRadius + 7.5 * scaleFactor;
   const baseHalfAngle = 0.08;
 
   const tipX = cx + tipRadius * Math.cos(theta);
@@ -92,35 +115,22 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
 
   return (
     <AuraCard
-      accentColor={accentColor}
       colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
       radius={20}
       style={[{ marginBottom: 12, flex: 1 }, style]}
     >
       <View style={styles.cardPadding}>
-        {/* Cabecera con Badge del estado de pH */}
+        {/* Cabecera: Icono fijo azul */}
         <View style={styles.headerRow}>
           <View style={styles.titleWrap}>
-            <DropletIcon size={14} color={accentColor} />
+            <DropletIcon size={14} color="#0EA5E9" />
             <Text style={[styles.titleLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
               {title}
             </Text>
           </View>
-
-          <View
-            style={[
-              styles.badgePill,
-              {
-                backgroundColor: badgeBg,
-                borderColor: badgeBorder,
-              },
-            ]}
-          >
-            <Text style={[styles.badgeText, { color: accentColor }]}>{classification}</Text>
-          </View>
         </View>
 
-        {/* Medidor Semicircular de 180° centrado que abarca el espacio vertical libre */}
+        {/* Medidor Semicircular de 180° */}
         <View style={styles.speedometerWrap}>
           <Svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
             <Defs>
@@ -153,7 +163,7 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
             <Circle
               cx={arcX}
               cy={arcY}
-              r={7}
+              r={7 * scaleFactor}
               fill={accentColor}
               opacity={0.35}
             />
@@ -165,7 +175,7 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
               strokeWidth={1}
             />
 
-            <Circle cx={arcX} cy={arcY} r={2.5} fill="#FFFFFF" />
+            <Circle cx={arcX} cy={arcY} r={2.5 * scaleFactor} fill="#FFFFFF" />
 
             <Line
               x1={cx}
@@ -191,7 +201,7 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
                   },
                 ]}
               >
-                {value}
+                {displayVal.toFixed(2)}
               </Text>
               <Text style={[styles.heroUnit, { color: accentColor }]}>
                 pH
@@ -206,10 +216,25 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
           </View>
         </View>
 
+        {/* Etiqueta de estado centrada abajo del medidor */}
+        <View style={styles.badgeCenterWrap}>
+          <View
+            style={[
+              styles.badgePill,
+              {
+                backgroundColor: badgeBg,
+                borderColor: badgeBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.badgeText, { color: accentColor }]}>{classification}</Text>
+          </View>
+        </View>
+
         {/* Footer */}
         <View style={styles.footerRow}>
           <Text style={[styles.footerDesc, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-            Rango neutro: <Text style={{ color: isDark ? '#CBD5E1' : '#475569', fontWeight: '600' }}>{idealMin} – {idealMax}</Text>
+            Rango óptimo: <Text style={{ color: isDark ? '#CBD5E1' : '#475569', fontWeight: '600' }}>{idealMin} – {idealMax}</Text>
           </Text>
         </View>
       </View>
@@ -225,7 +250,6 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
@@ -240,22 +264,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  badgePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
   speedometerWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    marginVertical: 14,
+    marginVertical: 6,
     flex: 1,
   },
   centerValueBox: {
@@ -286,11 +299,28 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     fontWeight: '700',
   },
+  badgeCenterWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+  },
+  badgePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+  },
   footerRow: {
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.05)',
     paddingTop: 8,
     marginTop: 4,
+    alignItems: 'center',
   },
   footerDesc: {
     fontSize: 10,

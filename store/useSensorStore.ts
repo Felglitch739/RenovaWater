@@ -20,7 +20,7 @@ export interface HistoryRecord {
 export interface AlertEvent {
   id: string;           // UUID simple (time + Math.random)
   time: string;         // HH:MM:SS del momento de la alerta
-  parameter: 'pH' | 'Temperatura' | 'Turbidez';
+  parameter: 'pH' | 'Temperatura' | 'Conductividad' | 'Turbidez';
   value: number;
   unit: string;
   status: MetricStatus; // 'warning' | 'danger'
@@ -37,7 +37,25 @@ export interface AlertRanges {
   ph: Required<MetricRange>;          // pH siempre tiene min y max
   temperature: Required<MetricRange>; // Temperatura (°C) tiene min y max
   turbidity: Pick<MetricRange, 'max'>; // Turbidez solo tiene umbral máximo
+  conductivity: Required<MetricRange>; // Conductividad (µS/cm) tiene min y max
 }
+
+/** Configuración de visibilidad de medidores en el dashboard */
+export interface VisibleMeters {
+  wqi: boolean;           // Índice Global WQI
+  ph: boolean;            // Medidor de pH
+  temperature: boolean;   // Medidor de Temperatura
+  conductivity: boolean;  // Gráfico de Conductividad Eléctrica
+  turbidity: boolean;     // Medidor de Turbidez
+}
+
+export const DEFAULT_VISIBLE_METERS: VisibleMeters = {
+  wqi: true,
+  ph: true,
+  temperature: true,
+  conductivity: true,
+  turbidity: true,
+};
 
 // ─────────────────────────────────────────────
 // Definición del estado completo del store
@@ -57,6 +75,12 @@ interface SensorState {
 
   // --- Rangos de alerta configurables ---
   alertRanges: AlertRanges;
+
+  // --- Visibilidad de medidores en el dashboard ---
+  visibleMeters: VisibleMeters;
+  toggleMeter: (meter: keyof VisibleMeters) => void;
+  setVisibleMeters: (meters: Partial<VisibleMeters>) => void;
+  resetVisibleMeters: () => void;
 
   // --- Historial para gráficas (máx. 24 registros) ---
   historyData: HistoryRecord[];
@@ -88,8 +112,9 @@ interface SensorState {
 
 const DEFAULT_ALERT_RANGES: AlertRanges = {
   ph:          { min: 6.5,  max: 8.5  },
-  temperature: { min: 18.0, max: 28.0 },
+  temperature: { min: 20.0, max: 35.0 },
   turbidity:   { max: 5.0 },
+  conductivity: { min: 250, max: 750 },
 };
 
 /** Máximo de registros que se guardan en el historial */
@@ -116,19 +141,18 @@ export const evaluatePh = (
 };
 
 /**
- * Evalúa la temperatura contra los rangos configurados.
- * - ok      → dentro del rango [min, max] (ej. 18°C a 28°C)
- * - warning → dentro de tolerancia de ±2.5°C
- * - danger  → fuera de tolerancia
+ * Evalúa la temperatura contra los rangos configurados:
+ * - ok (verde)      → Rango [min, max] (por defecto 20.0°C - 35.0°C)
+ * - warning (ámbar) → Fuera de [min, max] pero dentro de tolerancia
+ * - danger (rojo)   → < (min - 10) o > (max + 10)
  */
 export const evaluateTemperature = (
   val: number,
   range: Required<MetricRange> = DEFAULT_ALERT_RANGES.temperature,
 ): MetricStatus => {
-  if (val >= range.min && val <= range.max) return 'ok';
-  const tolerance = 2.5;
-  if (val >= range.min - tolerance && val <= range.max + tolerance) return 'warning';
-  return 'danger';
+  if (val < range.min - 10 || val > range.max + 10) return 'danger';
+  if (val < range.min || val > range.max) return 'warning';
+  return 'ok';
 };
 
 /**
@@ -146,21 +170,40 @@ export const evaluateTurbidity = (
   return 'danger';
 };
 
+/**
+ * Evalúa la conductividad eléctrica (µS/cm).
+ * - ok      → val entre [min, max]
+ * - warning → fuera de [min, max]
+ * - danger  → fuera de tolerancia extrema
+ */
+export const evaluateConductivity = (
+  val: number,
+  range: Required<MetricRange> = DEFAULT_ALERT_RANGES.conductivity,
+): MetricStatus => {
+  if (val < range.min - 100 || val > range.max + 250) return 'danger';
+  if (val < range.min || val > range.max) return 'warning';
+  return 'ok';
+};
+
 // ─────────────────────────────────────────────
 // Generadores de datos mock realistas
 // ─────────────────────────────────────────────
 
-/** Genera un pH con sesgo al rango neutro (6.0 – 9.8) */
+/** Genera un pH con rango amplio (5.8 – 9.6) */
 const generatePh = (): number =>
-  parseFloat((6.2 + Math.random() * 3.4).toFixed(2));
+  parseFloat((5.8 + Math.random() * 3.8).toFixed(2));
 
-/** Genera temperatura centrada en agua ambiente/potable (17.0°C – 31.0°C) */
+/** Genera temperatura en rango amplio (14.0°C – 40.0°C) para disparar alertas periódicas */
 const generateTemperature = (): number =>
-  parseFloat((17.5 + Math.random() * 13.0).toFixed(1));
+  parseFloat((14.0 + Math.random() * 26.0).toFixed(1));
 
-/** Genera turbidez con sesgo a valores bajos-medios (0 – 42 NTU) */
+/** Genera turbidez (0 – 42 NTU) */
 const generateTurbidity = (): number =>
   parseFloat((Math.random() * 42).toFixed(1));
+
+/** Genera conductividad en µS/cm (180 – 880 µS/cm) */
+const generateConductivity = (): number =>
+  Math.round(180 + Math.random() * 700);
 
 /** Formatea un Date como HH:MM:SS para el historial */
 const formatTime = (date: Date): string =>
@@ -187,6 +230,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
 
   // ── Configuración inicial ──
   alertRanges: DEFAULT_ALERT_RANGES,
+  visibleMeters: DEFAULT_VISIBLE_METERS,
   historyData: [],
   alertLog: [],
   totalAlerts: 0,
@@ -195,6 +239,24 @@ export const useSensorStore = create<SensorState>((set, get) => ({
   theme: 'dark',
 
   setTheme: (theme: AppTheme) => set({ theme }),
+
+  toggleMeter: (meter: keyof VisibleMeters) =>
+    set((state) => ({
+      visibleMeters: {
+        ...state.visibleMeters,
+        [meter]: !state.visibleMeters[meter],
+      },
+    })),
+
+  setVisibleMeters: (newMeters: Partial<VisibleMeters>) =>
+    set((state) => ({
+      visibleMeters: {
+        ...state.visibleMeters,
+        ...newMeters,
+      },
+    })),
+
+  resetVisibleMeters: () => set({ visibleMeters: DEFAULT_VISIBLE_METERS }),
 
   // ──────────────────────────────────────────
   // connect()
@@ -242,22 +304,24 @@ export const useSensorStore = create<SensorState>((set, get) => ({
 
       const id = setInterval(() => {
         const timeNow = new Date();
-        const { alertRanges, historyData, alertLog, totalAlerts } = get();
+        const { alertRanges, visibleMeters, historyData, alertLog, totalAlerts } = get();
         const timeFormatted = formatTime(timeNow);
 
         // 1. Generar nuevos valores del sensor
         const newPh = generatePh();
         const newTemp = generateTemperature();
         const newTurbidity = generateTurbidity();
+        const newConductivity = generateConductivity();
 
         // 2. Evaluar estado de cada parámetro
         const phStatus = evaluatePh(newPh, alertRanges.ph);
         const tempStatus = evaluateTemperature(newTemp, alertRanges.temperature);
         const turbidityStatus = evaluateTurbidity(newTurbidity, alertRanges.turbidity);
+        const conductivityStatus = evaluateConductivity(newConductivity, alertRanges.conductivity);
 
-        // 3. Construir eventos de alerta si están fuera de rango
+        // 3. Construir eventos de alerta si están fuera de rango Y si el medidor está activo en Ajustes
         const newAlerts: AlertEvent[] = [];
-        if (phStatus !== 'ok') {
+        if (phStatus !== 'ok' && visibleMeters.ph) {
           newAlerts.push({
             id: `${timeFormatted}-ph-${Math.random().toString(36).slice(2, 6)}`,
             time: timeFormatted,
@@ -267,7 +331,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
             status: phStatus,
           });
         }
-        if (tempStatus !== 'ok') {
+        if (tempStatus !== 'ok' && visibleMeters.temperature) {
           newAlerts.push({
             id: `${timeFormatted}-temp-${Math.random().toString(36).slice(2, 6)}`,
             time: timeFormatted,
@@ -277,7 +341,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
             status: tempStatus,
           });
         }
-        if (turbidityStatus !== 'ok') {
+        if (turbidityStatus !== 'ok' && visibleMeters.turbidity) {
           newAlerts.push({
             id: `${timeFormatted}-tur-${Math.random().toString(36).slice(2, 6)}`,
             time: timeFormatted,
@@ -285,6 +349,16 @@ export const useSensorStore = create<SensorState>((set, get) => ({
             value: newTurbidity,
             unit: 'NTU',
             status: turbidityStatus,
+          });
+        }
+        if (conductivityStatus !== 'ok' && visibleMeters.conductivity) {
+          newAlerts.push({
+            id: `${timeFormatted}-cond-${Math.random().toString(36).slice(2, 6)}`,
+            time: timeFormatted,
+            parameter: 'Conductividad',
+            value: newConductivity,
+            unit: 'µS/cm',
+            status: conductivityStatus,
           });
         }
 
@@ -359,6 +433,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
         ph: { ...current.alertRanges.ph, ...newRanges.ph },
         temperature: { ...current.alertRanges.temperature, ...newRanges.temperature },
         turbidity: { ...current.alertRanges.turbidity, ...newRanges.turbidity },
+        conductivity: { ...current.alertRanges.conductivity, ...newRanges.conductivity },
       },
     });
   },

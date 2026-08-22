@@ -25,9 +25,10 @@ import {
 } from '../store/useSensorStore';
 import { AlertsView } from '../components/AlertsView';
 import { ReportsView } from '../components/ReportsView';
+import { SettingsView } from '../components/SettingsView';
 import { ConfigModal } from '../components/ConfigModal';
 import { AuraCard } from '../components/AuraCard';
-import { GlowLineChart } from '../components/GlowLineChart';
+import { WqiCard } from '../components/WqiCard';
 import { SemiCircleGauge } from '../components/SemiCircleGauge';
 import { TurbidityMeterCard } from '../components/TurbidityMeterCard';
 import { PhLevelGauge } from '../components/PhLevelGauge';
@@ -57,7 +58,7 @@ import {
 // Tipos internos
 // ─────────────────────────────────────────────
 
-type NavTab = 'monitor' | 'alertas' | 'informes' | 'ble';
+type NavTab = 'monitor' | 'alertas' | 'informes' | 'ajustes';
 
 // ─────────────────────────────────────────────
 // Paleta de tema premium
@@ -89,52 +90,7 @@ const LIGHT_THEME = {
   accent: '#0284C7',
 };
 
-// ─────────────────────────────────────────────
-// Sub-componente: Micro-tarjeta de estadística Premium
-// ─────────────────────────────────────────────
 
-interface StatCardProps {
-  label: string;
-  value: string;
-  unit?: string;
-  valueColor?: string;
-  isDark: boolean;
-}
-
-const StatCard: React.FC<StatCardProps> = ({ label, value, unit, valueColor, isDark }) => {
-  const T = isDark ? DARK_THEME : LIGHT_THEME;
-  return (
-    <AuraCard colors={T.card} radius={16} style={{ flex: 1, marginHorizontal: 3 }}>
-      <View style={{ padding: 12 }}>
-        <Text style={{
-          color: T.textSecondary,
-          fontSize: 9,
-          fontWeight: '700',
-          letterSpacing: 1.2,
-          textTransform: 'uppercase',
-          marginBottom: 4,
-        }}>
-          {label}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-          <Text style={{
-            color: valueColor ?? T.textPrimary,
-            fontSize: 20,
-            fontWeight: 'bold',
-            fontFamily: 'monospace',
-          }}>
-            {value}
-          </Text>
-          {unit ? (
-            <Text style={{ color: T.textSecondary, fontSize: 10, marginLeft: 3, marginBottom: 2 }}>
-              {unit}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-    </AuraCard>
-  );
-};
 
 // ─────────────────────────────────────────────
 // Sub-componente: Barra de navegación inferior Premium
@@ -172,9 +128,9 @@ const NAV_ITEMS: NavItemDef[] = [
     renderIcon: (color) => <FileTextIcon size={19} color={color} />,
   },
   {
-    id: 'ble',
-    label: 'Bluetooth',
-    renderIcon: (color) => <BluetoothIcon size={19} color={color} />,
+    id: 'ajustes',
+    label: 'Ajustes',
+    renderIcon: (color) => <SettingsIcon size={19} color={color} />,
   },
 ];
 
@@ -208,13 +164,10 @@ const BottomNav: React.FC<NavBarProps> = ({
     >
       {NAV_ITEMS.map((item) => {
         const isActive = active === item.id;
-        const isBle = item.id === 'ble';
         const isAlert = item.id === 'alertas';
 
         const iconColor = isActive
           ? '#38BDF8'
-          : isBle && isConnected
-          ? '#10B981'
           : isDark ? '#64748B' : '#94A3B8';
 
         return (
@@ -264,15 +217,6 @@ const BottomNav: React.FC<NavBarProps> = ({
                   </Text>
                 </View>
               )}
-
-              {/* Indicador de BLE Conectado con glow */}
-              {isBle && isConnected && (
-                <View style={{
-                  position: 'absolute', top: 6, right: 8,
-                  width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#10B981',
-                  shadowColor: '#10B981', shadowOpacity: 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
-                }} />
-              )}
             </View>
           </TouchableOpacity>
         );
@@ -281,32 +225,7 @@ const BottomNav: React.FC<NavBarProps> = ({
   );
 };
 
-// ─────────────────────────────────────────────
-// Sub-componente: Botón de acción utilitario
-// ─────────────────────────────────────────────
 
-interface ActionButtonProps {
-  label: string;
-  icon: React.ReactNode;
-  onPress: () => void;
-  isDark: boolean;
-}
-
-const ActionButton: React.FC<ActionButtonProps> = ({ label, icon, onPress, isDark }) => {
-  const T = isDark ? DARK_THEME : LIGHT_THEME;
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={{ flex: 1, marginHorizontal: 4 }}>
-      <AuraCard colors={T.card} radius={16}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 8 }}>
-          <View style={{ marginRight: 8 }}>{icon}</View>
-          <Text style={{ color: T.textPrimary, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 }}>
-            {label}
-          </Text>
-        </View>
-      </AuraCard>
-    </TouchableOpacity>
-  );
-};
 
 // ─────────────────────────────────────────────
 // Pantalla principal: DashboardScreen
@@ -323,6 +242,7 @@ export const DashboardScreen: React.FC = () => {
     isConnected,
     isScanning,
     alertRanges,
+    visibleMeters,
     historyData,
     totalAlerts,
     theme,
@@ -356,30 +276,9 @@ export const DashboardScreen: React.FC = () => {
   const tempStatus = evaluateTemperature(temperature, alertRanges.temperature);
   const turbidityStatus = evaluateTurbidity(turbidity, alertRanges.turbidity);
 
-  // Estadísticas derivadas del historial (memoizadas)
-  const stats = useMemo(() => {
-    if (historyData.length === 0) {
-      return { avgPh: '--', avgTemp: '--', peakTurbidity: '--', alerts: totalAlerts.toString() };
-    }
-    const avgPh = (
-      historyData.reduce((sum, r) => sum + r.ph, 0) / historyData.length
-    ).toFixed(2);
-    const avgTemp = (
-      historyData.reduce((sum, r) => sum + r.temperature, 0) / historyData.length
-    ).toFixed(1);
-    const peakTurbidity = Math.max(...historyData.map((r) => r.turbidity)).toFixed(1);
-    return { avgPh, avgTemp, peakTurbidity, alerts: totalAlerts.toString() };
-  }, [historyData, totalAlerts]);
-
-  // Calcular Salud del Sistema (0-100) basado en alertas/historial
-  const systemHealth = useMemo(() => {
-    if (!isConnected || historyData.length === 0) return 100;
-    const alertRatio = totalAlerts / (historyData.length * 3); // 3 parámetros por muestra
-    return Math.max(0, Math.round((1 - alertRatio) * 100));
-  }, [isConnected, historyData.length, totalAlerts]);
 
   // ─── Control de Tabs y Gestos Swipe Horizontal ───
-  const NAV_TABS: NavTab[] = ['monitor', 'alertas', 'informes', 'ble'];
+  const NAV_TABS: NavTab[] = ['monitor', 'alertas', 'informes', 'ajustes'];
 
   const handleSelectTab = (tab: NavTab) => {
     setActiveTab(tab);
@@ -401,6 +300,14 @@ export const DashboardScreen: React.FC = () => {
   };
 
   const gaugeWidth = (screenWidth - 44) / 2;
+
+  // Verificar si hay al menos un medidor activo
+  const hasVisibleMeters =
+    visibleMeters.wqi ||
+    visibleMeters.ph ||
+    visibleMeters.temperature ||
+    visibleMeters.conductivity ||
+    visibleMeters.turbidity;
 
   return (
     <View style={{ flex: 1, backgroundColor: T.bg }}>
@@ -440,33 +347,34 @@ export const DashboardScreen: React.FC = () => {
                 borderTopColor: 'rgba(255,255,255,0.12)',
                 borderLeftColor: 'rgba(255,255,255,0.06)',
                 shadowColor: '#0EA5E9',
-                shadowOpacity: isDark ? 0.3 : 0.15,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 6,
+                shadowOpacity: isDark ? 0.35 : 0.15,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 2 },
               }}
-              className="items-center justify-center p-1 mr-3"
+              className="border items-center justify-center mr-3 p-1.5"
             >
               <Image
                 source={require('../assets/TPH_Monitor_Icon.png')}
-                style={{ width: 36, height: 36 }}
+                style={{ width: 34, height: 34 }}
                 resizeMode="contain"
               />
             </View>
 
             {/* Texto de la Marca & Estado */}
-            <View className="justify-center">
+            <View>
               <View className="flex-row items-center">
-                <Text style={{ color: T.textPrimary, fontSize: 18, fontWeight: 'bold', letterSpacing: -0.5 }}>
-                  T.P.H
-                </Text>
-                <Text style={{ color: '#0EA5E9', fontSize: 18, fontWeight: '900', letterSpacing: -0.5, marginLeft: 4 }}>
-                  MONITOR
+                <Text style={{
+                  color: isDark ? '#F8FAFC' : '#0F172A',
+                  fontSize: 16,
+                  fontWeight: '800',
+                  letterSpacing: -0.3,
+                }}>
+                  TPH Monitor
                 </Text>
                 <View style={{
-                  marginLeft: 8,
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
+                  marginLeft: 6,
+                  paddingHorizontal: 5,
+                  paddingVertical: 1,
                   borderRadius: 6,
                   backgroundColor: 'rgba(14,165,233,0.12)',
                   borderWidth: 1,
@@ -490,33 +398,8 @@ export const DashboardScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Lado Derecho: Salud del Sistema & Selector de Tema */}
+          {/* Lado Derecho: Selector de Tema */}
           <View className="flex-row items-center">
-            {isConnected && (
-              <View
-                style={{
-                  marginRight: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 12,
-                  backgroundColor: isDark ? 'rgba(30,38,52,0.9)' : 'rgba(241,245,249,0.9)',
-                  borderWidth: 1,
-                  borderColor: T.headerBorder,
-                  alignItems: 'flex-end',
-                }}
-              >
-                <Text style={{ color: T.textSecondary, fontSize: 8, fontWeight: '600' }}>
-                  Salud
-                </Text>
-                <Text style={{
-                  color: systemHealth > 90 ? '#10B981' : systemHealth > 70 ? '#FBBF24' : '#EF4444',
-                  fontSize: 14, fontFamily: 'monospace', fontWeight: 'bold', lineHeight: 18,
-                }}>
-                  {systemHealth}%
-                </Text>
-              </View>
-            )}
-
             {/* Selector de Tema (Oscuro / Claro) */}
             <TouchableOpacity
               onPress={() => {
@@ -586,47 +469,100 @@ export const DashboardScreen: React.FC = () => {
                 )}
               </View>
 
-              {/* Fila 1: Medidores Visuales (pH y Temperatura) con igual altura y estiramiento adaptativo */}
-              <View style={{ flexDirection: 'row', marginHorizontal: -6, alignItems: 'stretch' }}>
-                <View style={{ width: '50%', paddingHorizontal: 6, flex: 1 }}>
-                  <PhLevelGauge
-                    value={ph}
-                    idealMin={alertRanges.ph.min}
-                    idealMax={alertRanges.ph.max}
-                    width={gaugeWidth}
-                    isDark={isDark}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-                <View style={{ width: '50%', paddingHorizontal: 6, flex: 1 }}>
-                  <TemperatureGauge
-                    value={temperature}
-                    min={0}
-                    max={50}
-                    status={tempStatus}
-                    idealRange={`${alertRanges.temperature.min}–${alertRanges.temperature.max}°C`}
-                    width={gaugeWidth}
-                    isDark={isDark}
-                    style={{ flex: 1 }}
-                  />
-                </View>
-              </View>
+              {/* Mensaje cuando no hay medidores activos */}
+              {!hasVisibleMeters && (
+                <AuraCard colors={T.card} radius={20} style={{ marginBottom: 12 }}>
+                  <View style={{ padding: 24, alignItems: 'center', justifyContent: 'center' }}>
+                    <InfoIcon size={26} color="#0EA5E9" />
+                    <Text style={{ color: isDark ? '#F1F5F9' : '#0F172A', fontSize: 13, fontWeight: '700', marginTop: 8 }}>
+                      Sin Medidores Activos
+                    </Text>
+                    <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, textAlign: 'center', marginTop: 4, maxWidth: 240 }}>
+                      Has ocultado todos los instrumentos. Personalízalos desde Ajustes.
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => handleSelectTab('ajustes')}
+                      activeOpacity={0.75}
+                      style={{
+                        marginTop: 12,
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        borderRadius: 12,
+                        backgroundColor: 'rgba(14,165,233,0.12)',
+                        borderWidth: 1,
+                        borderColor: 'rgba(14,165,233,0.3)',
+                      }}
+                    >
+                      <Text style={{ color: '#0EA5E9', fontSize: 11, fontWeight: '700' }}>
+                        Ir a Ajustes
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </AuraCard>
+              )}
 
-              {/* Fila 2: Gráfico Spline Area Chart (Conductividad y Sólidos Disueltos) */}
-              <ConductivityChart
-                data={historyData.length > 0 ? historyData.map((h) => Math.round(300 + h.ph * 15 + h.temperature * 4 + h.turbidity * 2)) : undefined}
-                currentValue={Math.round(300 + ph * 15 + temperature * 4 + turbidity * 2)}
-                width={screenWidth}
-                isDark={isDark}
-              />
+              {/* 1. Tarjeta de Calidad Global WQI (Condicional) */}
+              {visibleMeters.wqi && (
+                <WqiCard
+                  ph={ph}
+                  temperature={temperature}
+                  turbidity={turbidity}
+                  isConnected={isConnected}
+                  isDark={isDark}
+                />
+              )}
 
-              {/* Fila 3: Medidor de Claridad Óptica y Turbidez (Estilo Espectral Segmentado) */}
-              <TurbidityMeterCard
-                value={turbidity}
-                maxThreshold={alertRanges.turbidity.max}
-                status={turbidityStatus}
-                isDark={isDark}
-              />
+              {/* 2. Fila: Medidores Visuales (pH y Temperatura) adaptativos */}
+              {(visibleMeters.ph || visibleMeters.temperature) && (
+                <View style={{ flexDirection: 'row', marginHorizontal: -6, alignItems: 'stretch' }}>
+                  {visibleMeters.ph && (
+                    <View style={{ width: visibleMeters.temperature ? '50%' : '100%', paddingHorizontal: 6, flex: 1 }}>
+                      <PhLevelGauge
+                        value={ph}
+                        idealMin={alertRanges.ph.min}
+                        idealMax={alertRanges.ph.max}
+                        width={visibleMeters.temperature ? gaugeWidth : screenWidth - 32}
+                        isDark={isDark}
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                  )}
+                  {visibleMeters.temperature && (
+                    <View style={{ width: visibleMeters.ph ? '50%' : '100%', paddingHorizontal: 6, flex: 1 }}>
+                      <TemperatureGauge
+                        value={temperature}
+                        min={0}
+                        max={50}
+                        status={tempStatus}
+                        idealRange={`${alertRanges.temperature.min}–${alertRanges.temperature.max}°C`}
+                        width={visibleMeters.ph ? gaugeWidth : screenWidth - 32}
+                        isDark={isDark}
+                        style={{ flex: 1 }}
+                      />
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* 3. Gráfico Spline Area Chart (Conductividad) (Condicional) */}
+              {visibleMeters.conductivity && (
+                <ConductivityChart
+                  data={historyData.length > 0 ? historyData.map((h) => Math.round(300 + h.ph * 15 + h.temperature * 4 + h.turbidity * 2)) : undefined}
+                  currentValue={Math.round(300 + ph * 15 + temperature * 4 + turbidity * 2)}
+                  width={screenWidth}
+                  isDark={isDark}
+                />
+              )}
+
+              {/* 4. Medidor de Claridad Óptica y Turbidez (Condicional) */}
+              {visibleMeters.turbidity && (
+                <TurbidityMeterCard
+                  value={turbidity}
+                  maxThreshold={alertRanges.turbidity.max}
+                  status={turbidityStatus}
+                  isDark={isDark}
+                />
+              )}
 
               {/* Botón de acción principal (BLE/Simular) */}
               <TouchableOpacity
@@ -650,60 +586,8 @@ export const DashboardScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* ── SECCIÓN 2: TENDENCIAS & ESTADÍSTICAS ── */}
-            <View style={{ paddingBottom: 100 }}>
-              <Text style={{ color: T.textSecondary, fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12, paddingHorizontal: 2 }}>
-                Tendencia Óptica de Turbidez
-              </Text>
-
-              {/* Gráfico de línea SVG con glow */}
-              <AuraCard colors={T.card} radius={20} style={{ marginBottom: 12 }}>
-                <View style={{ padding: 16 }}>
-                  <GlowLineChart
-                    data={historyData}
-                    threshold={alertRanges.turbidity.max}
-                    width={screenWidth - 64}
-                    height={100}
-                  />
-                </View>
-              </AuraCard>
-
-              {/* Estadísticas rápidas (3 micro cards) */}
-              <View style={{ flexDirection: 'row', marginHorizontal: -3, marginBottom: 12 }}>
-                <StatCard
-                  label="Promedio pH"
-                  value={stats.avgPh}
-                  valueColor={stats.avgPh === '--' ? T.textMuted : T.textPrimary}
-                  isDark={isDark}
-                />
-                <StatCard
-                  label="Temp Prom"
-                  value={stats.avgTemp}
-                  unit="°C"
-                  valueColor={stats.avgTemp === '--' ? T.textMuted : T.textPrimary}
-                  isDark={isDark}
-                />
-                <StatCard
-                  label="Pico Turbidez"
-                  value={stats.peakTurbidity}
-                  unit="NTU"
-                  valueColor={
-                    stats.peakTurbidity === '--'
-                      ? T.textMuted
-                      : parseFloat(stats.peakTurbidity) > alertRanges.turbidity.max
-                      ? '#EF4444'
-                      : T.textPrimary
-                  }
-                  isDark={isDark}
-                />
-              </View>
-
-              {/* Botones de acción */}
-              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
-                <ActionButton icon={<SettingsIcon size={16} color="#0ea5e9" />} label="Límites" onPress={() => setIsConfigOpen(true)} isDark={isDark} />
-                <ActionButton icon={<HistoryIcon size={16} color="#0ea5e9" />} label="Historial" onPress={() => handleSelectTab('informes')} isDark={isDark} />
-              </View>
-            </View>
+            {/* Espacio inferior para no quedar tras la navbar */}
+            <View style={{ paddingBottom: 100 }} />
           </ScrollView>
         </View>
 
@@ -717,111 +601,9 @@ export const DashboardScreen: React.FC = () => {
           <ReportsView />
         </View>
 
-        {/* ─── PÁGINA 3: BLE ─── */}
+        {/* ─── PÁGINA 3: AJUSTES ─── */}
         <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-          <ScrollView className="flex-1 pb-10" showsVerticalScrollIndicator={false}>
-            <View className="mb-4">
-              <Text style={{ color: isDark ? '#E2E8F0' : '#0F172A', fontSize: 14, fontWeight: '600' }}>
-                Conectividad Bluetooth y Sensores
-              </Text>
-              <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 12, marginTop: 2 }}>
-                Emparejamiento de telemetría directa BLE ESP32
-              </Text>
-            </View>
-
-            {/* Tarjeta de Dispositivo con AuraCard */}
-            <AuraCard colors={T.card} radius={20} style={{ marginBottom: 16 }}>
-              <View style={{ padding: 18 }}>
-                <View className="flex-row items-center justify-between mb-4">
-                  <View className="flex-row items-center">
-                    <View className="w-11 h-11 rounded-2xl bg-sky-500/10 border border-sky-500/20 items-center justify-center mr-3">
-                      <BluetoothIcon size={20} color="#0ea5e9" />
-                    </View>
-                    <View>
-                      <Text style={{ color: isDark ? '#F1F5F9' : '#0F172A', fontWeight: 'bold', fontSize: 15 }}>
-                        TPH Sensor Array V2
-                      </Text>
-                      <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, fontFamily: 'monospace' }}>
-                        MAC: C4:4F:33:1A:89:B2
-                      </Text>
-                    </View>
-                  </View>
-                  <View className={`px-2.5 py-1 rounded-full ${isConnected ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-zinc-700/20 border border-zinc-700/40'}`}>
-                    <Text className={`text-[10px] font-semibold ${isConnected ? 'text-emerald-400' : 'text-zinc-400'}`}>
-                      {isConnected ? 'Enlazado' : 'Desconectado'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Métricas de Enlace */}
-                <View className="flex-row -mx-1 mb-4">
-                  <View style={{ flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }}>
-                    <View className="flex-row items-center mb-1">
-                      <SignalIcon size={12} color="#0ea5e9" />
-                      <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 9, fontWeight: '600', marginLeft: 4 }}>Señal RSSI</Text>
-                    </View>
-                    <Text style={{ color: isConnected ? '#38BDF8' : isDark ? '#64748B' : '#94A3B8', fontSize: 13, fontWeight: 'bold', fontFamily: 'monospace' }}>
-                      {isConnected ? '-64 dBm' : '--'}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }}>
-                    <View className="flex-row items-center mb-1">
-                      <BatteryIcon size={12} color="#10b981" />
-                      <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 9, fontWeight: '600', marginLeft: 4 }}>Batería Sonda</Text>
-                    </View>
-                    <Text style={{ color: isConnected ? '#10B981' : isDark ? '#64748B' : '#94A3B8', fontSize: 13, fontWeight: 'bold', fontFamily: 'monospace' }}>
-                      {isConnected ? '89%' : '--'}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, marginHorizontal: 3, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' }}>
-                    <View className="flex-row items-center mb-1">
-                      <ZapIcon size={12} color="#c084fc" />
-                      <Text style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 9, fontWeight: '600', marginLeft: 4 }}>Muestreo</Text>
-                    </View>
-                    <Text style={{ color: isConnected ? '#C084FC' : isDark ? '#64748B' : '#94A3B8', fontSize: 13, fontWeight: 'bold', fontFamily: 'monospace' }}>
-                      {isConnected ? '0.5 Hz' : '--'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Botón de Conectar / Escanear */}
-                <TouchableOpacity
-                  onPress={isConnected ? disconnect : connect}
-                  activeOpacity={0.75}
-                  style={[
-                    { paddingVertical: 14, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-                    isConnected
-                      ? { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }
-                      : { borderColor: 'rgba(14,165,233,0.3)', backgroundColor: 'rgba(14,165,233,0.08)' }
-                  ]}
-                >
-                  <View className="mr-2">
-                    {isConnected ? <StopIcon size={14} color="#ef4444" /> : <PlayIcon size={14} color="#0ea5e9" />}
-                  </View>
-                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: isConnected ? '#EF4444' : '#0EA5E9' }}>
-                    {isScanning ? 'Sincronizando vía BLE...' : isConnected ? 'Desconectar sonda BLE' : 'Escanear y conectar sonda'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </AuraCard>
-
-            {/* Info Box */}
-            <AuraCard colors={T.card} radius={18} style={{ marginBottom: 40 }}>
-              <View style={{ padding: 16 }}>
-                <View className="flex-row items-center mb-2">
-                  <InfoIcon size={16} color="#0ea5e9" />
-                  <Text style={{ color: isDark ? '#F1F5F9' : '#0F172A', fontWeight: 'bold', fontSize: 12, marginLeft: 6 }}>
-                    Guía de Telemetría ESP32
-                  </Text>
-                </View>
-                <Text style={{ color: isDark ? '#64748B' : '#94A3B8', fontSize: 11, lineHeight: 18 }}>
-                  1. Asegúrese de que el módulo ESP32 del TPH Monitor esté encendido.{'\n'}
-                  2. La sonda realiza lecturas de pH, Temperatura y Turbidez simultáneamente.{'\n'}
-                  3. Deslice horizontalmente entre pantallas para ver el registro de logs y reportes analíticos.
-                </Text>
-              </View>
-            </AuraCard>
-          </ScrollView>
+          <SettingsView />
         </View>
       </ScrollView>
 
