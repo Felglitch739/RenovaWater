@@ -118,14 +118,14 @@ export const GlowLineChart: React.FC<GlowLineChartProps> = ({
       {/* SVG del gráfico */}
       <Svg width={width} height={height}>
         <Defs>
-          {/* Gradiente para el relleno debajo de la línea */}
+          {/* Gradiente fino casi transparente para el área */}
           <LinearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={lineColor} stopOpacity="0.25" />
-            <Stop offset="100%" stopColor={lineColor} stopOpacity="0.02" />
+            <Stop offset="0%" stopColor={lineColor} stopOpacity="0.06" />
+            <Stop offset="100%" stopColor={lineColor} stopOpacity="0.00" />
           </LinearGradient>
-          {/* Gradiente para la línea (efecto depth) */}
+          {/* Gradiente para la línea */}
           <LinearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0%" stopColor={lineColor} stopOpacity="0.4" />
+            <Stop offset="0%" stopColor={lineColor} stopOpacity="0.7" />
             <Stop offset="100%" stopColor={lineColor} stopOpacity="1" />
           </LinearGradient>
         </Defs>
@@ -137,27 +137,16 @@ export const GlowLineChart: React.FC<GlowLineChartProps> = ({
             y1={thresholdY}
             x2={width - padX}
             y2={thresholdY}
-            stroke="rgba(251,191,36,0.25)"
+            stroke="rgba(251,191,36,0.20)"
             strokeWidth="1"
             strokeDasharray="4,4"
           />
         )}
 
-        {/* Relleno de área */}
+        {/* Relleno de área casi transparente */}
         <Path d={fillD} fill="url(#areaGrad)" />
 
-        {/* Línea principal (shadow/glow) — capa borrosa */}
-        <Path
-          d={pathD}
-          fill="none"
-          stroke={lineColor}
-          strokeWidth="5"
-          strokeOpacity="0.15"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Línea principal — capa nítida */}
+        {/* Línea principal nítida (2dp elegante) */}
         <Path
           d={pathD}
           fill="none"

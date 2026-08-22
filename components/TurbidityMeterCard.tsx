@@ -1,21 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, {
-  Defs,
-  LinearGradient,
-  Stop,
-  Rect,
-  Circle,
-  Line,
-  G,
-} from 'react-native-svg';
 import { AuraCard } from './AuraCard';
 import { WavesIcon } from './Icons';
 import type { MetricStatus } from '../store/useSensorStore';
 
 // ─────────────────────────────────────────────────────────────
-// TurbidityMeterCard — Medidor de Claridad Óptica y Turbidez
-// Estilo espectral segmentado con indicador de aguja neón
+// TurbidityMeterCard — Medidor de Turbidez Limpio y Sobrio
+// Barra de progreso de un solo color (acento #0EA5E9) con marcadores sutiles
 // ─────────────────────────────────────────────────────────────
 
 interface TurbidityMeterCardProps {
@@ -28,9 +19,9 @@ interface TurbidityMeterCardProps {
 const STATUS_META = {
   ok: {
     accentColor: '#0EA5E9',
-    badgeBg: 'rgba(14,165,233,0.15)',
+    badgeBg: 'rgba(14,165,233,0.12)',
     badgeText: '#38BDF8',
-    badgeBorder: 'rgba(14,165,233,0.3)',
+    badgeBorder: 'rgba(14,165,233,0.25)',
     label: 'NORMAL',
     clarityLabel: 'Agua Cristalina · Potable',
   },
@@ -40,7 +31,7 @@ const STATUS_META = {
     badgeText: '#FCD34D',
     badgeBorder: 'rgba(251,191,36,0.3)',
     label: 'PRECAUCIÓN',
-    clarityLabel: 'Ligera Turbidez · Filtrar',
+    clarityLabel: 'Ligera Turbidez',
   },
   danger: {
     accentColor: '#EF4444',
@@ -48,7 +39,7 @@ const STATUS_META = {
     badgeText: '#F87171',
     badgeBorder: 'rgba(239,68,68,0.3)',
     label: 'NO APTA',
-    clarityLabel: 'Alta Dispersión Óptica · No Apta',
+    clarityLabel: 'Alta Turbidez · No Apta',
   },
 } as const;
 
@@ -63,13 +54,12 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
   // Escala de 0 a 45 NTU
   const MAX_SCALE = 45;
   const clampedVal = Math.min(Math.max(value, 0), MAX_SCALE);
-  const progress = clampedVal / MAX_SCALE;
-
-  const barHeight = 12;
+  const progressPercent = Math.min(Math.max((clampedVal / MAX_SCALE) * 100, 2), 100);
+  const thresholdPercent = Math.min(Math.max((maxThreshold / MAX_SCALE) * 100, 0), 100);
 
   return (
     <AuraCard
-      accentColor={meta.accentColor}
+      accentColor={status !== 'ok' ? meta.accentColor : undefined}
       colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
       radius={20}
       style={{ marginBottom: 12 }}
@@ -78,11 +68,9 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
         {/* Header */}
         <View style={styles.headerRow}>
           <View style={styles.titleWrap}>
-            <View style={{ marginRight: 6 }}>
-              <WavesIcon size={16} color={meta.accentColor} />
-            </View>
+            <WavesIcon size={16} color="#0EA5E9" />
             <Text style={[styles.titleText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-              Índice de Turbidez (NTU)
+              Turbidez (NTU)
             </Text>
           </View>
 
@@ -92,8 +80,6 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
               {
                 backgroundColor: meta.badgeBg,
                 borderColor: meta.badgeBorder,
-                shadowColor: status !== 'ok' ? meta.accentColor : 'transparent',
-                shadowOpacity: status !== 'ok' ? 0.5 : 0,
               },
             ]}
           >
@@ -103,7 +89,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
           </View>
         </View>
 
-        {/* Fila del Valor Hero + Estado de Claridad */}
+        {/* Fila de Valor + Estado */}
         <View style={styles.valueRow}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
             <Text style={[styles.heroValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>
@@ -114,62 +100,42 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
             </Text>
           </View>
 
-          {/* Calificación de pureza */}
-          <View style={styles.clarityBadge}>
-            <Text style={[styles.clarityText, { color: meta.badgeText }]}>
-              {meta.clarityLabel}
-            </Text>
-          </View>
+          <Text style={[styles.clarityText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+            {meta.clarityLabel}
+          </Text>
         </View>
 
-        {/* Medidor de Espectro Óptico / Segmentos de Claridad */}
+        {/* Barra de progreso sobria de UN SOLO COLOR (Acento #0EA5E9) */}
         <View style={styles.meterContainer}>
-          <View style={styles.trackContainer}>
-            {/* Barra de espectro de 4 zonas con gradiente */}
-            <View style={styles.spectrumBar}>
-              {/* Zona 1: Cristalina (0-5 NTU) */}
-              <View style={[styles.zone, { flex: 5, backgroundColor: '#0EA5E9', borderTopLeftRadius: 6, borderBottomLeftRadius: 6 }]} />
-              {/* Zona 2: Aceptable (5-15 NTU) */}
-              <View style={[styles.zone, { flex: 10, backgroundColor: '#38BDF8' }]} />
-              {/* Zona 3: Advertencia (15-30 NTU) */}
-              <View style={[styles.zone, { flex: 15, backgroundColor: '#FBBF24' }]} />
-              {/* Zona 4: Crítica (>30 NTU) */}
-              <View style={[styles.zone, { flex: 15, backgroundColor: '#EF4444', borderTopRightRadius: 6, borderBottomRightRadius: 6 }]} />
-            </View>
-
-            {/* Marcador del Umbral Límite (Línea punteada a 5 NTU) */}
+          <View style={[styles.trackBackground, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+            {/* Barra de llenado sobria monocromática */}
             <View
               style={[
-                styles.thresholdMarker,
-                { left: `${(maxThreshold / MAX_SCALE) * 100}%` },
-              ]}
-            >
-              <View style={styles.thresholdPin} />
-            </View>
-
-            {/* Puntero/Thumb neón de la lectura actual */}
-            <View
-              style={[
-                styles.activeThumb,
+                styles.fillBar,
                 {
-                  left: `${Math.min(Math.max(progress * 100, 2), 98)}%`,
-                  borderColor: meta.accentColor,
-                  shadowColor: meta.accentColor,
+                  width: `${progressPercent}%`,
+                  backgroundColor: meta.accentColor,
                 },
               ]}
-            >
-              <View style={[styles.thumbCenter, { backgroundColor: meta.accentColor }]} />
-            </View>
+            />
+
+            {/* Marcador sutil de límite recomendado */}
+            <View
+              style={[
+                styles.thresholdLine,
+                { left: `${thresholdPercent}%` },
+              ]}
+            />
           </View>
 
           {/* Marcas de escala */}
           <View style={styles.scaleLabels}>
-            <Text style={[styles.scaleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>0 NTU</Text>
-            <Text style={[styles.scaleText, { color: '#0EA5E9', fontWeight: '700' }]}>
+            <Text style={[styles.scaleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>0</Text>
+            <Text style={[styles.scaleText, { color: '#0EA5E9', fontWeight: '600' }]}>
               Límite: {maxThreshold} NTU
             </Text>
             <Text style={[styles.scaleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-              45+ NTU
+              45 NTU
             </Text>
           </View>
         </View>
@@ -177,10 +143,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
         {/* Footer */}
         <View style={styles.footerRow}>
           <Text style={[styles.standardText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-            Norma OMS / NOM-127: <Text style={{ color: isDark ? '#CBD5E1' : '#475569', fontWeight: '600' }}>≤ {maxThreshold} NTU</Text>
-          </Text>
-          <Text style={[styles.sensorTypeText, { color: isDark ? '#475569' : '#94A3B8' }]}>
-            Sensor óptico IR 850nm
+            Límite óptimo potable: <Text style={{ color: isDark ? '#CBD5E1' : '#475569', fontWeight: '600' }}>≤ {maxThreshold} NTU</Text>
           </Text>
         </View>
       </View>
@@ -201,110 +164,67 @@ const styles = StyleSheet.create({
   titleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   titleText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   badgePill: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 14,
     borderWidth: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
   },
   badgeLabel: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
   valueRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 14,
+    alignItems: 'baseline',
+    marginBottom: 10,
   },
   heroValue: {
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: 'bold',
     fontFamily: 'monospace',
-    lineHeight: 38,
+    lineHeight: 34,
   },
   heroUnit: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
-    marginBottom: 4,
-  },
-  clarityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    marginBottom: 4,
+    marginLeft: 4,
   },
   clarityText: {
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
+    fontWeight: '500',
   },
   meterContainer: {
-    marginTop: 2,
-    marginBottom: 4,
+    marginVertical: 4,
   },
-  trackContainer: {
-    height: 24,
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  spectrumBar: {
+  trackBackground: {
     height: 8,
     borderRadius: 4,
-    flexDirection: 'row',
     overflow: 'hidden',
-    opacity: 0.85,
+    position: 'relative',
   },
-  zone: {
+  fillBar: {
     height: '100%',
+    borderRadius: 4,
   },
-  thresholdMarker: {
+  thresholdLine: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     width: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -1,
-  },
-  thresholdPin: {
-    width: 2,
-    height: 18,
     backgroundColor: '#FFFFFF',
-    borderRadius: 1,
-    opacity: 0.9,
-  },
-  activeThumb: {
-    position: 'absolute',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#0F172A',
-    borderWidth: 2,
-    marginLeft: -9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
-  thumbCenter: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    opacity: 0.8,
+    marginLeft: -1,
   },
   scaleLabels: {
     flexDirection: 'row',
@@ -316,18 +236,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.05)',
     paddingTop: 8,
-    marginTop: 10,
+    marginTop: 8,
   },
   standardText: {
     fontSize: 10,
-  },
-  sensorTypeText: {
-    fontSize: 9,
   },
 });

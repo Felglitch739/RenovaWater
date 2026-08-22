@@ -586,18 +586,19 @@ export const DashboardScreen: React.FC = () => {
                 )}
               </View>
 
-              {/* Fila 1: Medidores Visuales Neón (pH Semicircle Speedometer y Temperature Radial Gauge) */}
-              <View style={{ flexDirection: 'row', marginHorizontal: -6 }}>
-                <View style={{ width: '50%', paddingHorizontal: 6 }}>
+              {/* Fila 1: Medidores Visuales (pH y Temperatura) con igual altura y estiramiento adaptativo */}
+              <View style={{ flexDirection: 'row', marginHorizontal: -6, alignItems: 'stretch' }}>
+                <View style={{ width: '50%', paddingHorizontal: 6, flex: 1 }}>
                   <PhLevelGauge
                     value={ph}
                     idealMin={alertRanges.ph.min}
                     idealMax={alertRanges.ph.max}
                     width={gaugeWidth}
                     isDark={isDark}
+                    style={{ flex: 1 }}
                   />
                 </View>
-                <View style={{ width: '50%', paddingHorizontal: 6 }}>
+                <View style={{ width: '50%', paddingHorizontal: 6, flex: 1 }}>
                   <TemperatureGauge
                     value={temperature}
                     min={0}
@@ -606,6 +607,7 @@ export const DashboardScreen: React.FC = () => {
                     idealRange={`${alertRanges.temperature.min}–${alertRanges.temperature.max}°C`}
                     width={gaugeWidth}
                     isDark={isDark}
+                    style={{ flex: 1 }}
                   />
                 </View>
               </View>
@@ -682,7 +684,7 @@ export const DashboardScreen: React.FC = () => {
                   isDark={isDark}
                 />
                 <StatCard
-                  label="Pico NTU"
+                  label="Pico Turbidez"
                   value={stats.peakTurbidity}
                   unit="NTU"
                   valueColor={

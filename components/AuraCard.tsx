@@ -1,20 +1,22 @@
 import React from 'react';
-import { View, ViewStyle, StyleSheet } from 'react-native';
+import { View, ViewStyle, StyleProp, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // ─────────────────────────────────────────────────────────────
-// AuraCard — Superficie premium neumorfica con bisel iluminado
+// AuraCard — Superficie sobria sin bordes cargados
 // ─────────────────────────────────────────────────────────────
 
 interface AuraCardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   /** Radio de esquina. Default: 20 */
   radius?: number;
   /** Colores del gradiente interno. Default: oscuro neutro */
   colors?: [string, string, ...string[]];
-  /** Aplica borde izquierdo de color de acento (ej. status) */
+  /** Aplica indicador de acento lateral */
   accentColor?: string;
+  /** Si es true, oculta bordes y biseles. Default: true */
+  hideBorder?: boolean;
 }
 
 export const AuraCard: React.FC<AuraCardProps> = ({
@@ -23,6 +25,7 @@ export const AuraCard: React.FC<AuraCardProps> = ({
   radius = 20,
   colors = ['#1C222B', '#14181F'],
   accentColor,
+  hideBorder = true,
 }) => {
   return (
     <View style={[styles.shadowWrap, { borderRadius: radius }, style]}>
@@ -33,30 +36,15 @@ export const AuraCard: React.FC<AuraCardProps> = ({
         style={[
           styles.gradient,
           { borderRadius: radius },
-          {
-            borderTopWidth: 1.5,
+          !hideBorder && {
+            borderTopWidth: 1,
             borderLeftWidth: 0.5,
-            borderTopColor: 'rgba(255, 255, 255, 0.10)',
-            borderLeftColor: 'rgba(255, 255, 255, 0.06)',
+            borderTopColor: 'rgba(255, 255, 255, 0.08)',
+            borderLeftColor: 'rgba(255, 255, 255, 0.04)',
           },
         ]}
       >
-        {/* Capa: borde inferior oscuro (sombra base) */}
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              borderRadius: radius,
-              borderBottomWidth: 2,
-              borderRightWidth: 1,
-              borderBottomColor: 'rgba(0,0,0,0.55)',
-              borderRightColor: 'rgba(0,0,0,0.30)',
-            },
-          ]}
-          pointerEvents="none"
-        />
-
-        {/* Línea de acento izquierda (status color) */}
+        {/* Línea de acento izquierda opcional */}
         {accentColor && (
           <View
             style={{
@@ -67,11 +55,6 @@ export const AuraCard: React.FC<AuraCardProps> = ({
               width: 3.5,
               backgroundColor: accentColor,
               borderRadius: 2,
-              shadowColor: accentColor,
-              shadowOpacity: 0.7,
-              shadowRadius: 6,
-              shadowOffset: { width: 0, height: 0 },
-              elevation: 4,
             }}
             pointerEvents="none"
           />
@@ -86,10 +69,10 @@ export const AuraCard: React.FC<AuraCardProps> = ({
 const styles = StyleSheet.create({
   shadowWrap: {
     shadowColor: '#000',
-    shadowOpacity: 0.55,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   gradient: {
     overflow: 'hidden',

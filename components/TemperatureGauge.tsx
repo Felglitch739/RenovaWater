@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import Svg, {
   Path,
   Defs,
@@ -28,6 +28,7 @@ export interface TemperatureGaugeProps {
   status?: 'ok' | 'warning' | 'danger';
   width?: number;
   isDark?: boolean;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
@@ -41,13 +42,13 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
   status = 'ok',
   width = 160,
   isDark = true,
+  style,
 }) => {
   // Normalizar progreso (0 a 1)
   const clampedVal = Math.min(Math.max(value, min), max);
   const progress = max > min ? (clampedVal - min) / (max - min) : 0.5;
 
   // Parámetros de geometría del arco de 240 grados (apertura inferior de 120°)
-  // Ángulo inicial: 150° (5pi/6), Ángulo final: 390° (13pi/6 ó 30°)
   const strokeWidth = 10;
   const svgSize = Math.max(width - 20, 130);
   const radius = (svgSize - strokeWidth * 2 - 8) / 2;
@@ -69,7 +70,7 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
   const endX = cx + radius * Math.cos(endAngleRad);
   const endY = cy + radius * Math.sin(endAngleRad);
 
-  // Path SVG para un arco de 240° (large-arc-flag = 1, sweep-flag = 1)
+  // Path SVG para un arco de 240°
   const fullArcPath = `M ${startX} ${startY} A ${radius} ${radius} 0 1 1 ${endX} ${endY}`;
 
   // Posición del punto indicador (Thumb) en el valor actual
@@ -77,7 +78,7 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
   const thumbX = cx + radius * Math.cos(currentAngleRad);
   const thumbY = cy + radius * Math.sin(currentAngleRad);
 
-  // Color de acento según estado (Cyan neón por defecto, ámbar/rojo en alerta)
+  // Color de acento según estado
   const accentColor =
     status === 'danger' ? '#EF4444' : status === 'warning' ? '#FBBF24' : '#00E5FF';
   const glowColor =
@@ -103,7 +104,7 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
       accentColor={accentColor}
       colors={isDark ? ['#1E293B', '#111827'] : ['#FFFFFF', '#F8FAFC']}
       radius={22}
-      style={{ marginBottom: 12 }}
+      style={[{ marginBottom: 12, flex: 1 }, style]}
     >
       <View style={styles.cardContent}>
         {/* Cabecera: Etiqueta descriptiva + Badge de Estado */}
@@ -123,8 +124,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
               {
                 backgroundColor: statusBg,
                 borderColor: statusBorder,
-                shadowColor: accentColor,
-                shadowOpacity: 0.6,
               },
             ]}
           >
@@ -143,7 +142,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
               </LinearGradient>
             </Defs>
 
-            {/* Pista inactiva de fondo */}
             <Path
               d={fullArcPath}
               fill="none"
@@ -152,7 +150,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
               strokeLinecap="round"
             />
 
-            {/* Capa de resplandor neón LED (Glow exterior difuso) */}
             <Path
               d={fullArcPath}
               fill="none"
@@ -164,7 +161,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
               strokeDashoffset={strokeDashoffset}
             />
 
-            {/* Arco de progreso activo con gradiente */}
             <Path
               d={fullArcPath}
               fill="none"
@@ -175,7 +171,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
               strokeDashoffset={strokeDashoffset}
             />
 
-            {/* Indicador puntual (Thumb) con halo de luz */}
             <Circle
               cx={thumbX}
               cy={thumbY}
@@ -197,7 +192,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
             />
           </Svg>
 
-          {/* Valor numérico central con resplandor LED */}
           <View style={styles.centerValueWrap}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center' }}>
               <Text
@@ -220,7 +214,6 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
             </Text>
           </View>
 
-          {/* Marcas de escala inferior (Min y Max) */}
           <View style={[styles.scaleRow, { width: svgSize - 20 }]}>
             <Text style={[styles.scaleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
               {min}°
@@ -245,6 +238,8 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
 const styles = StyleSheet.create({
   cardContent: {
     padding: 16,
+    flex: 1,
+    justifyContent: 'space-between',
   },
   headerRow: {
     flexDirection: 'row',
@@ -270,8 +265,6 @@ const styles = StyleSheet.create({
     paddingVertical: 2.5,
     borderRadius: 20,
     borderWidth: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
   },
   statusText: {
     fontSize: 8,
@@ -283,6 +276,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     marginVertical: 4,
+    flex: 1,
   },
   centerValueWrap: {
     position: 'absolute',

@@ -166,16 +166,15 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
         <View style={styles.chartWrap}>
           <Svg width={chartW} height={chartH} viewBox={`0 0 ${chartW} ${chartH}`}>
             <Defs>
-              {/* Degradado para el área bajo la curva que se desvanece a la base */}
+              {/* Degradado fino casi transparente para el área bajo la curva */}
               <LinearGradient id="conductivityAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={accentColor} stopOpacity="0.38" />
-                <Stop offset="65%" stopColor={accentColor} stopOpacity="0.08" />
+                <Stop offset="0%" stopColor={accentColor} stopOpacity="0.08" />
                 <Stop offset="100%" stopColor={accentColor} stopOpacity="0.0" />
               </LinearGradient>
 
-              {/* Degradado para la línea resplandeciente */}
+              {/* Trazo sobrio fino */}
               <LinearGradient id="conductivityLineGrad" x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0%" stopColor="#38BDF8" stopOpacity="0.8" />
+                <Stop offset="0%" stopColor="#0EA5E9" stopOpacity="0.9" />
                 <Stop offset="100%" stopColor={accentColor} stopOpacity="1" />
               </LinearGradient>
             </Defs>
@@ -186,7 +185,7 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
               y1={padTop + plotH * 0.25}
               x2={padLeft + plotW}
               y2={padTop + plotH * 0.25}
-              stroke={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'}
+              stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}
               strokeDasharray="3,4"
               strokeWidth="1"
             />
@@ -195,31 +194,20 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
               y1={padTop + plotH * 0.75}
               x2={padLeft + plotW}
               y2={padTop + plotH * 0.75}
-              stroke={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'}
+              stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}
               strokeDasharray="3,4"
               strokeWidth="1"
             />
 
-            {/* Relleno degradado suave (Area Fill) */}
+            {/* Relleno degradado casi transparente */}
             <Path d={areaPath} fill="url(#conductivityAreaGrad)" />
 
-            {/* Trazo exterior de resplandor Neón LED (Glow blur) */}
-            <Path
-              d={linePath}
-              fill="none"
-              stroke={accentColor}
-              strokeWidth="6"
-              strokeOpacity="0.22"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-
-            {/* Trazo nítido de la línea curvada */}
+            {/* Trazo nítido de la línea curvada (2dp elegante) */}
             <Path
               d={linePath}
               fill="none"
               stroke="url(#conductivityLineGrad)"
-              strokeWidth="2.5"
+              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
