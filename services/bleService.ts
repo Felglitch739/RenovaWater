@@ -24,7 +24,11 @@ export interface BleDiscoveredDevice {
   isConnectable?: boolean;
 }
 
-// UUIDs estándar de Nordic UART Service (usados por ESP32 BLE UART)
+// UUIDs configurados en el firmware del ESP32
+export const ESP32_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b'.toLowerCase();
+export const ESP32_CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8'.toLowerCase();
+
+// UUIDs estándar de respaldo (Nordic UART)
 export const NORDIC_UART_SERVICE_UUID = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E'.toLowerCase();
 export const NORDIC_UART_TX_CHAR_UUID = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'.toLowerCase();
 export const NORDIC_UART_RX_CHAR_UUID = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'.toLowerCase();
@@ -111,7 +115,12 @@ class Esp32BleService {
   }
 
   private notifyDevices() {
-    const list = Array.from(this.discoveredDevicesMap.values());
+    const list = Array.from(this.discoveredDevicesMap.values()).sort((a, b) => {
+      const isEspA = (a.name || '').toLowerCase().includes('esp') || (a.name || '').toLowerCase().includes('ph') ? 1 : 0;
+      const isEspB = (b.name || '').toLowerCase().includes('esp') || (b.name || '').toLowerCase().includes('ph') ? 1 : 0;
+      if (isEspA !== isEspB) return isEspB - isEspA;
+      return (b.rssi ?? -999) - (a.rssi ?? -999);
+    });
     this.deviceListeners.forEach((l) => l(list));
   }
 
@@ -150,16 +159,47 @@ class Esp32BleService {
 
   // ── Escaneo de dispositivos ──
 
-  public async startScan(timeoutMs: number = 10000): Promise<void> {
+  public async startScan(timeoutMs: number = 15000): Promise<void> {
     if (!this.isAvailable()) {
-      this.setStatus('error', 'El módulo Bluetooth nativo no está disponible en este entorno.');
+      const msg = 'El módulo Bluetooth nativo no está disponible. Si usas Expo Go, requieres un Development Build (APK) para acceder al hardware Bluetooth.';
+      console.warn('[BLE]', msg);
+      this.setStatus('error', msg);
       return;
     }
 
     const hasPermission = await this.requestPermissions();
     if (!hasPermission) {
-      this.setStatus('error', 'Permisos de Bluetooth o Ubicación denegados.');
+      this.setStatus('error', 'Permisos de Bluetooth o Ubicación denegados en el dispositivo.');
       return;
+    }
+
+    // Verificar estado del adaptador Bluetooth
+    try {
+      const state = await this.bleManager.state();
+      console.log('[BLE] Estado actual del adaptador Bluetooth:', state);
+      if (state !== 'PoweredOn') {
+        // Esperar a que pase a PoweredOn si está encendiéndose
+        const isReady = await new Promise<boolean>((resolve) => {
+          const sub = this.bleManager.onStateChange((newState: string) => {
+            console.log('[BLE] Cambio de estado de adaptador:', newState);
+            if (newState === 'PoweredOn') {
+              sub.remove();
+              resolve(true);
+            }
+          }, true);
+          setTimeout(() => {
+            sub.remove();
+            resolve(false);
+          }, 3000);
+        });
+
+        if (!isReady) {
+          this.setStatus('error', 'Bluetooth apagado o no disponible. Por favor enciende el Bluetooth y la Ubicación (GPS) de tu teléfono.');
+          return;
+        }
+      }
+    } catch (e: any) {
+      console.warn('[BLE] Error consultando estado de Bluetooth:', e);
     }
 
     // Limpiar lista anterior
@@ -169,10 +209,12 @@ class Esp32BleService {
 
     if (this.scanTimeoutId) clearTimeout(this.scanTimeoutId);
 
+    console.log('[BLE] Iniciando escaneo de periféricos BLE...');
+
     try {
       this.bleManager.startDeviceScan(
         null, // Escanear todos los servicios
-        { allowDuplicates: false },
+        { allowDuplicates: true },
         (error: any, device: any) => {
           if (error) {
             console.warn('[BLE] Error en startDeviceScan:', error);
@@ -182,12 +224,13 @@ class Esp32BleService {
           }
 
           if (device && device.id) {
-            const devName = device.name || device.localName;
-            // Filtrar o priorizar nombres relevantes pero permitir ver dispositivos con nombre
+            const existing = this.discoveredDevicesMap.get(device.id);
+            const devName = device.name || device.localName || (existing ? existing.name : undefined);
+            
             this.discoveredDevicesMap.set(device.id, {
               id: device.id,
               name: devName || 'Dispositivo Desconocido',
-              rssi: device.rssi ?? null,
+              rssi: device.rssi ?? existing?.rssi ?? null,
               isConnectable: device.isConnectable ?? true,
             });
             this.notifyDevices();
@@ -196,9 +239,11 @@ class Esp32BleService {
       );
 
       this.scanTimeoutId = setTimeout(() => {
+        console.log('[BLE] Tiempo de escaneo finalizado.');
         this.stopScan();
       }, timeoutMs);
     } catch (err: any) {
+      console.error('[BLE] Excepción en startScan:', err);
       this.setStatus('error', err.message || 'Fallo al iniciar el escaneo BLE');
     }
   }

@@ -118,6 +118,7 @@ export const SettingsView: React.FC = () => {
     stopBleScan,
     connectBleDevice,
     disconnectBleDevice,
+    processTelemetryString,
     connect,
     disconnect,
     ph,
@@ -336,33 +337,47 @@ export const SettingsView: React.FC = () => {
                       Dispositivos Detectados ({bleDevices.length}):
                     </Text>
 
-                    {bleDevices.map((dev) => (
-                      <TouchableOpacity
-                        key={dev.id}
-                        onPress={() => connectBleDevice(dev.id)}
-                        activeOpacity={0.7}
-                        style={[
-                          styles.deviceListItem,
-                          {
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
-                            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-                          },
-                        ]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.deviceItemName, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-                            {dev.name || 'Dispositivo Desconocido'}
-                          </Text>
-                          <Text style={[styles.deviceItemId, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                            {dev.id} {dev.rssi !== null ? `· ${dev.rssi} dBm` : ''}
-                          </Text>
-                        </View>
+                    {bleDevices.map((dev) => {
+                      const isEsp = (dev.name || '').toLowerCase().includes('esp') || (dev.name || '').toLowerCase().includes('ph');
+                      return (
+                        <TouchableOpacity
+                          key={dev.id}
+                          onPress={() => connectBleDevice(dev.id)}
+                          activeOpacity={0.7}
+                          style={[
+                            styles.deviceListItem,
+                            {
+                              backgroundColor: isEsp
+                                ? isDark ? 'rgba(14,165,233,0.08)' : '#F0F9FF'
+                                : isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                              borderColor: isEsp
+                                ? '#0EA5E9'
+                                : isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                            },
+                          ]}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={[styles.deviceItemName, { color: isEsp ? '#0EA5E9' : (isDark ? '#F1F5F9' : '#0F172A') }]}>
+                                {dev.name || 'Dispositivo Desconocido'}
+                              </Text>
+                              {isEsp && (
+                                <View style={styles.espBadge}>
+                                  <Text style={styles.espBadgeText}>ESP32 DETECTADO</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={[styles.deviceItemId, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                              {dev.id} {dev.rssi !== null ? `· ${dev.rssi} dBm` : ''}
+                            </Text>
+                          </View>
 
-                        <View style={styles.connectDeviceBtn}>
-                          <Text style={styles.connectDeviceBtnText}>Conectar</Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
+                          <View style={[styles.connectDeviceBtn, isEsp && { backgroundColor: '#0EA5E9' }]}>
+                            <Text style={styles.connectDeviceBtnText}>Conectar</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 )}
 
@@ -512,6 +527,38 @@ export const SettingsView: React.FC = () => {
                 <Text style={styles.consoleText}>
                   {rawTelemetry || 'ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00'}
                 </Text>
+              </View>
+
+              {/* Botones de Prueba Rápida de Telemetría */}
+              <View style={{ marginTop: 10 }}>
+                <Text style={[styles.quickTestHeader, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  PROBAR FORMATO DE TELEMETRÍA ESP32:
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                  <TouchableOpacity
+                    onPress={() => processTelemetryString('ADC: 1350.00 | Voltaje: 1.08 V | pH: 5.20')}
+                    activeOpacity={0.7}
+                    style={[styles.quickTestBtn, { borderColor: 'rgba(239,68,68,0.4)', backgroundColor: 'rgba(239,68,68,0.1)' }]}
+                  >
+                    <Text style={[styles.quickTestText, { color: '#EF4444' }]}>Ácido (5.20)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => processTelemetryString('ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00')}
+                    activeOpacity={0.7}
+                    style={[styles.quickTestBtn, { borderColor: 'rgba(16,185,129,0.4)', backgroundColor: 'rgba(16,185,129,0.1)' }]}
+                  >
+                    <Text style={[styles.quickTestText, { color: '#10B981' }]}>Neutro (7.00)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => processTelemetryString('ADC: 2850.00 | Voltaje: 2.30 V | pH: 8.80')}
+                    activeOpacity={0.7}
+                    style={[styles.quickTestBtn, { borderColor: 'rgba(192,132,252,0.4)', backgroundColor: 'rgba(192,132,252,0.1)' }]}
+                  >
+                    <Text style={[styles.quickTestText, { color: '#C084FC' }]}>Alcalino (8.80)</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
@@ -1216,5 +1263,36 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: 'monospace',
     letterSpacing: 0.5,
+  },
+  espBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(14,165,233,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,233,0.4)',
+  },
+  espBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#0EA5E9',
+  },
+  quickTestHeader: {
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  quickTestBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickTestText: {
+    fontSize: 9,
+    fontWeight: '700',
   },
 });
