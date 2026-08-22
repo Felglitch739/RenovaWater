@@ -6,10 +6,13 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { useSensorStore } from '../store/useSensorStore';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { ShareIcon, ThermometerIcon, DropletIcon, WavesIcon } from './Icons';
+import { AuraCard } from './AuraCard';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -38,7 +41,6 @@ interface ReportBlockProps {
   sublabel?: string;
   valueColor?: string;
   isDark: boolean;
-  isIndustrial: boolean;
 }
 
 const ReportBlock: React.FC<ReportBlockProps> = ({
@@ -48,34 +50,41 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
   sublabel,
   valueColor,
   isDark,
-  isIndustrial,
 }) => {
-  // Directriz SCADA: Geometría rígida y colores técnicos
-  const containerStyle = isIndustrial
-    ? "bg-[#0f172a]/80 border-slate-800 rounded-sm"
-    : "bg-[#1a2436] border-slate-700 rounded-md";
-
   return (
-    <View className={`w-full border-b ${containerStyle} py-3 px-4 flex-row items-center justify-between mb-1`}>
-      <View className="flex-1 mr-4">
-        <Text style={{ fontFamily: 'monospace' }} className="text-[#7e8b9b] text-[9px] uppercase tracking-[2px] font-bold">
-          {label.replace('\n', '_')}
-        </Text>
-        {sublabel ? (
-          <Text className="text-slate-500 text-[8px] mt-0.5 uppercase">
-            {sublabel}
+    <AuraCard
+      colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
+      radius={16}
+      style={{ marginBottom: 8 }}
+    >
+      <View style={styles.blockInner}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={[styles.blockLabel, { color: isDark ? '#E2E8F0' : '#0F172A' }]}>
+            {label}
           </Text>
-        ) : null}
+          {sublabel ? (
+            <Text style={[styles.blockSublabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+              {sublabel}
+            </Text>
+          ) : null}
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+          <Text
+            style={[
+              styles.blockValue,
+              { color: valueColor || (isDark ? '#F8FAFC' : '#0F172A') },
+            ]}
+          >
+            {value}
+          </Text>
+          {unit ? (
+            <Text style={[styles.blockUnit, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              {unit}
+            </Text>
+          ) : null}
+        </View>
       </View>
-      <View className="flex-row items-baseline">
-        <Text style={{ fontFamily: 'monospace' }} className={`${valueColor || 'text-[#FFFFFF]'} text-xl font-bold`}>
-          {value}
-        </Text>
-        {unit ? (
-          <Text className="text-slate-500 text-[9px] ml-1.5 font-bold uppercase">{unit}</Text>
-        ) : null}
-      </View>
-    </View>
+    </AuraCard>
   );
 };
 
@@ -83,11 +92,11 @@ const ReportBlock: React.FC<ReportBlockProps> = ({
 // Sub-componente: Separador con etiqueta
 // ─────────────────────────────────────────────
 
-const SectionLabel: React.FC<{ label: string; isDark: boolean; isIndustrial: boolean }> = ({ label, isDark, isIndustrial }) => (
-  <View className="flex-row items-center mb-4 mt-5">
-    <View className={`flex-1 h-px ${isIndustrial ? 'bg-slate-800' : isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
-    <Text className={`${isIndustrial ? 'text-slate-500' : isDark ? 'text-zinc-600' : 'text-slate-400'} text-[10px] uppercase tracking-widest mx-3 font-bold`}>{label}</Text>
-    <View className={`flex-1 h-px ${isIndustrial ? 'bg-slate-800' : isDark ? 'bg-zinc-800' : 'bg-slate-200'}`} />
+const SectionLabel: React.FC<{ label: string; isDark: boolean }> = ({ label, isDark }) => (
+  <View style={styles.sectionLabelRow}>
+    <View style={[styles.sectionLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }]} />
+    <Text style={[styles.sectionText, { color: isDark ? '#94A3B8' : '#64748B' }]}>{label}</Text>
+    <View style={[styles.sectionLine, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }]} />
   </View>
 );
 
@@ -96,10 +105,9 @@ const SectionLabel: React.FC<{ label: string; isDark: boolean; isIndustrial: boo
 // ─────────────────────────────────────────────
 
 export const ReportsView: React.FC = () => {
-  const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected, theme } =
+  const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected, theme, alertRanges } =
     useSensorStore();
   const isDark = theme === 'dark';
-  const isIndustrial = theme === 'industrial';
 
   const [realTimeDuration, setRealTimeDuration] = useState<string>('--');
 
@@ -127,7 +135,9 @@ export const ReportsView: React.FC = () => {
         avgPh: '--',
         minPh: '--',
         maxPh: '--',
-        avgDensity: '--',
+        avgTemperature: '--',
+        minTemperature: '--',
+        maxTemperature: '--',
         peakTurbidity: '--',
         avgTurbidity: '--',
         stablePercent: '--',
@@ -137,17 +147,19 @@ export const ReportsView: React.FC = () => {
 
     const phs = historyData.map((r) => r.ph);
     const turbidities = historyData.map((r) => r.turbidity);
-    const densities = historyData.map((r) => r.density);
+    const temperatures = historyData.map((r) => r.temperature);
 
     const avgPh = (phs.reduce((a, b) => a + b, 0) / phs.length).toFixed(2);
     const minPh = Math.min(...phs).toFixed(2);
     const maxPh = Math.max(...phs).toFixed(2);
-    const avgDensity = (densities.reduce((a, b) => a + b, 0) / densities.length).toFixed(3);
+
+    const avgTemperature = (temperatures.reduce((a, b) => a + b, 0) / temperatures.length).toFixed(1);
+    const minTemperature = Math.min(...temperatures).toFixed(1);
+    const maxTemperature = Math.max(...temperatures).toFixed(1);
+
     const peakTurbidity = Math.max(...turbidities).toFixed(1);
     const avgTurbidity = (turbidities.reduce((a, b) => a + b, 0) / turbidities.length).toFixed(1);
 
-    // Porcentaje de muestras sin alertas = operación estable
-    const stableCount = historyData.length - alertLog.length;
     const stablePercent = Math.max(
       0,
       Math.round(((historyData.length - totalAlerts / 3) / historyData.length) * 100),
@@ -157,7 +169,9 @@ export const ReportsView: React.FC = () => {
       avgPh,
       minPh,
       maxPh,
-      avgDensity,
+      avgTemperature,
+      minTemperature,
+      maxTemperature,
       peakTurbidity,
       avgTurbidity,
       stablePercent,
@@ -168,37 +182,26 @@ export const ReportsView: React.FC = () => {
   // ── Handler del botón de exportar ──
   const handleExport = async () => {
     try {
-      let dataToExport = [...historyData];
+      const dataToExport = [...historyData];
 
-      // VALIDACIÓN: Si no hay datos, generar datos ficticios para probar
       if (dataToExport.length === 0) {
         Alert.alert(
-          "Historial Vacío",
-          "No hay muestras reales aún. Se generará un reporte de prueba con datos ficticios.",
-          [{ text: "Continuar" }]
+          'Historial vacío',
+          'No hay muestras aún. Inicie el monitoreo para recolectar datos.',
+          [{ text: 'Entendido' }],
         );
-        dataToExport = [
-          { time: "08:00:00", ph: 7.2, density: 1.002, turbidity: 2.5 },
-          { time: "09:00:00", ph: 7.5, density: 1.005, turbidity: 4.8 },
-          { time: "10:00:00", ph: 8.1, density: 1.012, turbidity: 15.2 },
-        ];
+        return;
       }
 
-      // 1. Generar Contenido CSV
-      const header = "Hora,pH,Densidad (g/cm3),Turbidez (NTU)\n";
-      const rows = dataToExport.map(r =>
-        `${r.time},${r.ph},${r.density},${r.turbidity}`
-      ).join("\n");
+      const header = 'Hora,pH,Temperatura (C),Turbidez (NTU)\n';
+      const rows = dataToExport
+        .map((r) => `${r.time},${r.ph},${r.temperature},${r.turbidity}`)
+        .join('\n');
       const csvContent = header + rows;
 
-      // 2. Definir nombre del archivo
-      const fileName = `Reporte_TPH_${new Date().getTime()}.csv`;
-
-      // Intentar guardar primero con el método de compartir (más compatible en Expo Go)
+      const fileName = `Reporte_TPH_Calidad_${new Date().getTime()}.csv`;
       const fileUri = FileSystem.cacheDirectory + fileName;
 
-      // Simplificación Senior: Eliminamos objetos de codificación externos que causan el error de 'undefined'
-      // Expo maneja UTF-8 por defecto al pasarle un string directamente.
       await FileSystem.writeAsStringAsync(fileUri, csvContent);
 
       const isSharingAvailable = await Sharing.isAvailableAsync();
@@ -206,158 +209,291 @@ export const ReportsView: React.FC = () => {
       if (isSharingAvailable) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/csv',
-          dialogTitle: 'Descargar Reporte de Calidad',
+          dialogTitle: 'Descargar reporte analítico de calidad',
         });
       } else {
-        // Si fallan los métodos modernos, intentar el SAF de Android
         if (Platform.OS === 'android') {
           const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
           if (permissions.granted) {
             const uri = await FileSystem.StorageAccessFramework.createFileAsync(
               permissions.directoryUri,
               fileName,
-              'text/csv'
+              'text/csv',
             );
             await FileSystem.writeAsStringAsync(uri, csvContent);
-            Alert.alert("Éxito", "Reporte guardado exitosamente en la carpeta seleccionada.");
+            Alert.alert('Éxito', 'Reporte guardado exitosamente.');
           }
-        } else {
-          throw new Error("La función de compartir no está disponible en este dispositivo.");
         }
       }
     } catch (error: any) {
-      console.error("Export Error:", error);
+      console.error('Export Error:', error);
       Alert.alert(
-        "Error de Exportación",
+        'Error al exportar',
         `No se pudo completar la operación.\n\nDetalle: ${error.message || 'Error desconocido'}`,
-        [{ text: "Entendido" }]
+        [{ text: 'Entendido' }],
       );
     }
   };
 
   return (
     <ScrollView
-      className="flex-1"
+      style={{ flex: 1 }}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 8 }}
+      contentContainerStyle={{ paddingBottom: 30 }}
     >
       {/* Cabecera del panel */}
-      <View className="mb-4">
-        <Text className={`${isDark ? 'text-zinc-300' : 'text-slate-700'} text-sm font-bold uppercase tracking-wider`}>
-          Informe de Turno
+      <View style={{ marginBottom: 12 }}>
+        <Text style={[styles.headerTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
+          Informe Analítico del Período
         </Text>
-        <Text className={`${isDark ? 'text-zinc-600' : 'text-slate-500'} text-[10px] mt-0.5 font-medium`}>
+        <Text style={[styles.headerSubtitle, { color: isDark ? '#64748B' : '#94A3B8' }]}>
           {report.sampleCount > 0
-            ? `Basado en ${report.sampleCount} muestras del período actual`
-            : 'Sin datos suficientes · Conecte el sensor'}
+            ? `Basado en ${report.sampleCount} muestras de telemetría recopiladas`
+            : 'Sin datos suficientes · Inicie el escaneo de la sonda'}
         </Text>
       </View>
 
       {/* ── Bloque 1: Resumen de pH ── */}
       <SectionLabel label="Análisis de pH" isDark={isDark} />
-      <View className="flex-col">
+      <View style={{ flexDirection: 'column' }}>
         <ReportBlock
-          label={'Promedio 24h'}
+          label="Promedio de pH"
           value={report.avgPh}
-          sublabel="Valor representativo del período"
+          sublabel="Representativo de la muestra"
           isDark={isDark}
         />
         <ReportBlock
-          label={'Mínimo'}
+          label="pH Mínimo Registrado"
           value={report.minPh}
-          sublabel="Valor más ácido detectado"
+          sublabel="Muestra con mayor acidez"
           isDark={isDark}
           valueColor={
-            report.minPh !== '--' && parseFloat(report.minPh) < 6.5
-              ? 'text-amber-500'
+            report.minPh !== '--' && parseFloat(report.minPh) < alertRanges.ph.min
+              ? '#FBBF24'
               : undefined
           }
         />
         <ReportBlock
-          label={'Máximo'}
+          label="pH Máximo Registrado"
           value={report.maxPh}
-          sublabel="Valor más alcalino detectado"
+          sublabel="Muestra con mayor alcalinidad"
           isDark={isDark}
           valueColor={
-            report.maxPh !== '--' && parseFloat(report.maxPh) > 8.5
-              ? 'text-amber-500'
+            report.maxPh !== '--' && parseFloat(report.maxPh) > alertRanges.ph.max
+              ? '#FBBF24'
               : undefined
           }
         />
       </View>
 
-      {/* ── Bloque 2: Turbidez y operación ── */}
-      <SectionLabel label="Calidad y operación" isDark={isDark} />
-      <View className="flex-col">
+      {/* ── Bloque 2: Temperatura ── */}
+      <SectionLabel label="Análisis Térmico" isDark={isDark} />
+      <View style={{ flexDirection: 'column' }}>
         <ReportBlock
-          label={'Pico de turbidez'}
+          label="Temperatura Promedio"
+          value={report.avgTemperature}
+          unit="°C"
+          sublabel="Media del agua evaluada"
+          isDark={isDark}
+        />
+        <ReportBlock
+          label="Temperatura Mínima"
+          value={report.minTemperature}
+          unit="°C"
+          sublabel="Punto térmico más frío"
+          isDark={isDark}
+          valueColor={
+            report.minTemperature !== '--' && parseFloat(report.minTemperature) < alertRanges.temperature.min
+              ? '#38BDF8'
+              : undefined
+          }
+        />
+        <ReportBlock
+          label="Temperatura Máxima"
+          value={report.maxTemperature}
+          unit="°C"
+          sublabel="Punto térmico más cálido"
+          isDark={isDark}
+          valueColor={
+            report.maxTemperature !== '--' && parseFloat(report.maxTemperature) > alertRanges.temperature.max
+              ? '#EF4444'
+              : undefined
+          }
+        />
+      </View>
+
+      {/* ── Bloque 3: Turbidez y operación ── */}
+      <SectionLabel label="Calidad Óptica y Tiempo Operativo" isDark={isDark} />
+      <View style={{ flexDirection: 'column' }}>
+        <ReportBlock
+          label="Pico de Turbidez"
           value={report.peakTurbidity}
           unit="NTU"
-          sublabel="Máximo detectado en el período"
+          sublabel="Máxima dispersión óptica detectada"
           isDark={isDark}
           valueColor={
-            report.peakTurbidity !== '--' && parseFloat(report.peakTurbidity) > 5
-              ? 'text-red-500'
+            report.peakTurbidity !== '--' && parseFloat(report.peakTurbidity) > alertRanges.turbidity.max
+              ? '#EF4444'
               : undefined
           }
         />
         <ReportBlock
-          label={'Tiempo operativo'}
+          label="Tiempo Operativo Continuo"
           value={realTimeDuration}
-          sublabel={isConnected ? 'Sesión activa' : 'Sensor desconectado'}
+          sublabel={isConnected ? 'Sesión de telemetría activa' : 'Sensor desconectado'}
           isDark={isDark}
-          valueColor="text-sky-500"
+          valueColor="#0EA5E9"
         />
       </View>
 
-      {/* ── Bloque 3: Resumen de alertas ── */}
-      <SectionLabel label="Alertas y Otros" isDark={isDark} isIndustrial={isIndustrial} />
-      <View className={`border ${isIndustrial ? 'border-slate-800 bg-[#0f172a]/80' : isDark ? 'border-zinc-700/60 bg-zinc-800/40' : 'border-slate-200 bg-white shadow-sm'} rounded-sm p-4 mb-1 flex-row justify-between items-center`}>
-        <View>
-          <Text style={isIndustrial ? { fontFamily: 'monospace' } : undefined} className={`${isIndustrial ? 'text-[#7e8b9b] text-[9px] uppercase tracking-[2px]' : isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
-            {isIndustrial ? 'TOTAL_ALERTS_LOG' : 'Total Alertas'}
-          </Text>
-          <View className="flex-row items-baseline">
+      {/* ── Bloque 4: Resumen de alertas ── */}
+      <SectionLabel label="Auditoría de Calidad" isDark={isDark} />
+      <AuraCard
+        colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
+        radius={16}
+        style={{ marginBottom: 12 }}
+      >
+        <View style={styles.auditRow}>
+          <View>
+            <Text style={[styles.auditLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              Incidencias Detectadas
+            </Text>
             <Text
-              style={isIndustrial ? { fontFamily: 'monospace' } : undefined}
-              className={`text-2xl font-bold ${isIndustrial ? '' : 'font-mono'} ${
-                totalAlerts > 0 ? 'text-amber-500' : 'text-sky-500'
-              }`}
+              style={[
+                styles.auditValue,
+                { color: totalAlerts > 0 ? '#FBBF24' : '#10B981' },
+              ]}
             >
               {totalAlerts}
             </Text>
           </View>
-        </View>
 
-        <View className="items-end">
-          <Text style={isIndustrial ? { fontFamily: 'monospace' } : undefined} className={`${isIndustrial ? 'text-[#7e8b9b] text-[9px] uppercase tracking-[2px]' : isDark ? 'text-zinc-500' : 'text-slate-500'} text-[10px] uppercase tracking-widest mb-1 font-bold`}>
-            {isIndustrial ? 'AVG_DENSITY' : 'Densidad prom.'}
-          </Text>
-          <Text style={isIndustrial ? { fontFamily: 'monospace' } : undefined} className={`${isIndustrial ? 'text-[#FFFFFF]' : isDark ? 'text-white' : 'text-slate-900'} text-lg font-bold ${isIndustrial ? '' : 'font-mono'}`}>
-            {report.avgDensity}
-          </Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={[styles.auditLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              Índice de Estabilidad
+            </Text>
+            <Text style={[styles.auditValue, { color: isDark ? '#F8FAFC' : '#0F172A' }]}>
+              {report.stablePercent}%
+            </Text>
+          </View>
         </View>
-      </View>
+      </AuraCard>
 
-      {/* ── Botón de exportar: COMANDO TÉCNICO ── */}
-      <View className="mt-8 mb-10">
+      {/* ── Botón de exportar ── */}
+      <View style={{ marginTop: 12, marginBottom: 16 }}>
         <TouchableOpacity
           onPress={handleExport}
-          activeOpacity={0.7}
+          activeOpacity={0.75}
           disabled={report.sampleCount === 0}
-          className={`border ${report.sampleCount > 0 ? 'border-sky-500/50 bg-[#0f172a]' : 'border-slate-800 opacity-30'} py-4 flex-row items-center justify-center rounded-sm`}
+          style={[
+            styles.exportBtn,
+            report.sampleCount > 0
+              ? { borderColor: 'rgba(14,165,233,0.3)', backgroundColor: 'rgba(14,165,233,0.1)' }
+              : { borderColor: 'rgba(255,255,255,0.06)', opacity: 0.4, backgroundColor: 'rgba(255,255,255,0.03)' },
+          ]}
         >
-          <Text className="text-sky-500 text-lg mr-3">⤓</Text>
-          <Text style={{ fontFamily: 'monospace' }} className="text-sky-500 text-xs font-bold tracking-[2px]">
-            EXPORT_REPORT_CSV
+          <ShareIcon size={16} color="#0EA5E9" />
+          <Text style={styles.exportBtnText}>
+            Exportar Reporte CSV Completo
           </Text>
         </TouchableOpacity>
         {report.sampleCount === 0 && (
-          <Text className="text-slate-600 text-[8px] text-center mt-2 font-mono uppercase tracking-widest">
-            ERROR: NO_SENSOR_DATA_FOUND
+          <Text style={[styles.exportDisabledHint, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+            Inicie el monitoreo para habilitar la exportación de datos
           </Text>
         )}
       </View>
     </ScrollView>
   );
 };
+
+const styles = StyleSheet.create({
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  blockInner: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  blockLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  blockSublabel: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  blockValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  blockUnit: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    marginTop: 14,
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+  },
+  sectionText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginHorizontal: 10,
+  },
+  auditRow: {
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  auditLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  auditValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 18,
+  },
+  exportBtnText: {
+    color: '#0EA5E9',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 8,
+    letterSpacing: 0.3,
+  },
+  exportDisabledHint: {
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+});

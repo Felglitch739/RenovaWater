@@ -13,14 +13,33 @@
     },
     "ios": {
       "supportsTablet": true,
-      "icon": "./assets/TPH_MonitorLogo.png"
+      "icon": "./assets/TPH_MonitorLogo.png",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "TPH Monitor requiere acceso a Bluetooth BLE para conectarse al microcontrolador ESP32 y recibir telemetría del sensor de pH.",
+        "NSBluetoothPeripheralUsageDescription": "TPH Monitor requiere acceso a Bluetooth para comunicación con la sonda ESP32."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#09090b",
         "foregroundImage": "./assets/TPH_MonitorLogo.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
+      "package": "com.felixemf.tphmonitor"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,7 +58,18 @@
     },
     "plugins": [
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "TPH Monitor requiere acceso a Bluetooth BLE para comunicarse con el ESP32."
+        }
+      ]
     ]
   }
 }
