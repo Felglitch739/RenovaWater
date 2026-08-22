@@ -29,7 +29,7 @@ export interface PhLevelGaugeProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
+export const PhLevelGauge = React.memo<PhLevelGaugeProps>(({
   value = 7.00,
   min = 0,
   max = 14,
@@ -40,15 +40,15 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   isDark = true,
   style,
 }) => {
-  // Transición suave de valor animado
+  // Transición ultra-fluida de valor animado con física de resorte (Spring)
   const animVal = useRef(new Animated.Value(value)).current;
   const [displayVal, setDisplayVal] = useState(value);
 
   useEffect(() => {
-    Animated.timing(animVal, {
+    Animated.spring(animVal, {
       toValue: value,
-      duration: 550,
-      easing: Easing.out(Easing.cubic),
+      friction: 8,
+      tension: 42,
       useNativeDriver: false,
     }).start();
   }, [value]);
@@ -66,23 +66,22 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   // Clasificación cualitativa y color dinámico según la escala real de pH
   let classification = 'NEUTRO';
   let accentColor = '#00E5FF';
-  let badgeBg = 'rgba(0,229,255,0.14)';
-  let badgeBorder = 'rgba(0,229,255,0.35)';
+  let badgeBg = isDark ? 'rgba(0,229,255,0.14)' : 'rgba(0,229,255,0.18)';
+  let badgeBorder = isDark ? 'rgba(0,229,255,0.35)' : 'rgba(0,229,255,0.45)';
 
   if (clampedVal < idealMin) {
     classification = 'ÁCIDO';
-    accentColor = '#FBBF24';
-    badgeBg = 'rgba(251,191,36,0.16)';
-    badgeBorder = 'rgba(251,191,36,0.4)';
+    accentColor = '#F59E0B';
+    badgeBg = isDark ? 'rgba(245,158,11,0.16)' : 'rgba(245,158,11,0.18)';
+    badgeBorder = isDark ? 'rgba(245,158,11,0.4)' : 'rgba(245,158,11,0.5)';
   } else if (clampedVal > idealMax) {
     classification = 'ALCALINO';
-    accentColor = '#C084FC';
-    badgeBg = 'rgba(192,132,252,0.16)';
-    badgeBorder = 'rgba(192,132,252,0.4)';
+    accentColor = '#A855F7';
+    badgeBg = isDark ? 'rgba(168,85,247,0.16)' : 'rgba(168,85,247,0.18)';
+    badgeBorder = isDark ? 'rgba(168,85,247,0.4)' : 'rgba(168,85,247,0.5)';
   }
 
   // Geometría del velocímetro semicircular de 180°
-  // Escalar el grosor del arco proporcionalmente al ancho del contenedor
   const baseWidth = 160;
   const scaleFactor = Math.min(width / baseWidth, 2.2);
   const strokeWidth = Math.round(11 * scaleFactor);
@@ -90,7 +89,7 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   const radius = (svgWidth - strokeWidth * 2 - 12) / 2;
   const cx = svgWidth / 2;
   const cy = radius + strokeWidth + 6;
-  const svgHeight = cy + 12;
+  const svgHeight = cy + 14;
 
   const semicirclePath = `M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`;
 
@@ -99,19 +98,11 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
   const arcX = cx + radius * Math.cos(theta);
   const arcY = cy - radius * Math.sin(theta);
 
-  // Marcador triangular estilizado (escalado con el contenedor)
-  const tipRadius = radius + strokeWidth / 2 + 1;
-  const baseRadius = tipRadius + 7.5 * scaleFactor;
-  const baseHalfAngle = 0.08;
-
-  const tipX = cx + tipRadius * Math.cos(theta);
-  const tipY = cy - tipRadius * Math.sin(theta);
-  const base1X = cx + baseRadius * Math.cos(theta + baseHalfAngle);
-  const base1Y = cy - baseRadius * Math.sin(theta + baseHalfAngle);
-  const base2X = cx + baseRadius * Math.cos(theta - baseHalfAngle);
-  const base2Y = cy - baseRadius * Math.sin(theta - baseHalfAngle);
-
-  const trianglePoints = `${tipX.toFixed(2)},${tipY.toFixed(2)} ${base1X.toFixed(2)},${base1Y.toFixed(2)} ${base2X.toFixed(2)},${base2Y.toFixed(2)}`;
+  // Coordenadas del pin radial guía indicador
+  const innerPinX = cx + (radius - strokeWidth / 2 - 3 * scaleFactor) * Math.cos(theta);
+  const innerPinY = cy - (radius - strokeWidth / 2 - 3 * scaleFactor) * Math.sin(theta);
+  const outerPinX = cx + (radius + strokeWidth / 2 + 5 * scaleFactor) * Math.cos(theta);
+  const outerPinY = cy - (radius + strokeWidth / 2 + 5 * scaleFactor) * Math.sin(theta);
 
   return (
     <AuraCard
@@ -143,48 +134,81 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
               </LinearGradient>
             </Defs>
 
+            {/* Pista de fondo */}
             <Path
               d={semicirclePath}
               fill="none"
-              stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}
+              stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}
               strokeWidth={strokeWidth}
               strokeLinecap="round"
             />
 
+            {/* Pista activa con gradiente espectral */}
             <Path
               d={semicirclePath}
               fill="none"
               stroke="url(#phSpectralGrad)"
               strokeWidth={strokeWidth}
               strokeLinecap="round"
+              opacity={0.92}
+            />
+
+            {/* Muesca central neutra de referencia (pH 7.0) */}
+            <Line
+              x1={cx}
+              y1={cy - radius - strokeWidth / 2 - 2}
+              x2={cx}
+              y2={cy - radius + strokeWidth / 2 + 2}
+              stroke={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)'}
+              strokeWidth={1.5}
+              strokeLinecap="round"
+            />
+
+            {/* 1. Pin radial guía estilizado */}
+            <Line
+              x1={innerPinX}
+              y1={innerPinY}
+              x2={outerPinX}
+              y2={outerPinY}
+              stroke={accentColor}
+              strokeWidth={2.4 * scaleFactor}
+              strokeLinecap="round"
               opacity={0.9}
             />
 
+            {/* 2. Aura de brillo suave (Halo) */}
             <Circle
               cx={arcX}
               cy={arcY}
-              r={7 * scaleFactor}
+              r={9.5 * scaleFactor}
               fill={accentColor}
-              opacity={0.35}
+              opacity={0.28}
             />
 
-            <Polygon
-              points={trianglePoints}
-              fill={accentColor}
-              stroke={isDark ? '#14181F' : '#FFFFFF'}
-              strokeWidth={1}
+            {/* 3. Bisel exterior esmaltado (Target Glass Ring) */}
+            <Circle
+              cx={arcX}
+              cy={arcY}
+              r={6.2 * scaleFactor}
+              fill={isDark ? '#0F172A' : '#FFFFFF'}
+              stroke={accentColor}
+              strokeWidth={2.2}
             />
 
-            <Circle cx={arcX} cy={arcY} r={2.5 * scaleFactor} fill="#FFFFFF" />
+            {/* 4. Núcleo vibrante de color (Neon Core) */}
+            <Circle
+              cx={arcX}
+              cy={arcY}
+              r={3.2 * scaleFactor}
+              fill={accentColor}
+            />
 
-            <Line
-              x1={cx}
-              y1={cy - radius - strokeWidth / 2 - 1}
-              x2={cx}
-              y2={cy - radius + strokeWidth / 2 + 1}
-              stroke={isDark ? '#14181F' : '#FFFFFF'}
-              strokeWidth={1.5}
-              opacity={0.8}
+            {/* 5. Punto central de destello blanco */}
+            <Circle
+              cx={arcX}
+              cy={arcY}
+              r={1.2 * scaleFactor}
+              fill="#FFFFFF"
             />
           </Svg>
 
@@ -240,7 +264,7 @@ export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
       </View>
     </AuraCard>
   );
-};
+});
 
 const styles = StyleSheet.create({
   cardPadding: {

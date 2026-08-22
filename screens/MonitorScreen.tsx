@@ -5,13 +5,14 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Image,
   Platform,
   StyleSheet,
   useWindowDimensions,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -55,185 +56,28 @@ import {
 } from '../components/Icons';
 
 // ─────────────────────────────────────────────
-// Tipos internos
-// ─────────────────────────────────────────────
-
-type NavTab = 'monitor' | 'alertas' | 'informes' | 'ajustes';
-
-// ─────────────────────────────────────────────
-// Paleta de tema premium
+// Pantalla principal: MonitorScreen
 // ─────────────────────────────────────────────
 
 const DARK_THEME = {
   bg: '#0A0D14',
-  card: ['#1C222B', '#14181F'] as [string, string],
   headerBg: 'rgba(12,15,22,0.97)',
   headerBorder: 'rgba(255,255,255,0.06)',
-  navBg: '#080C13',
-  navBorder: 'rgba(255,255,255,0.06)',
-  textPrimary: '#F1F5F9',
   textSecondary: '#64748B',
-  textMuted: '#374151',
-  accent: '#0EA5E9',
+  card: ['#1C222B', '#14181F'] as [string, string],
 };
 
 const LIGHT_THEME = {
   bg: '#F1F5F9',
-  card: ['#FFFFFF', '#F8FAFC'] as [string, string],
   headerBg: '#FFFFFF',
   headerBorder: 'rgba(0,0,0,0.08)',
-  navBg: '#FFFFFF',
-  navBorder: 'rgba(0,0,0,0.10)',
-  textPrimary: '#0F172A',
   textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  accent: '#0284C7',
+  card: ['#FFFFFF', '#F8FAFC'] as [string, string],
 };
 
-
-
-// ─────────────────────────────────────────────
-// Sub-componente: Barra de navegación inferior Premium
-// ─────────────────────────────────────────────
-
-interface NavBarProps {
-  active: NavTab;
-  onSelect: (tab: NavTab) => void;
-  isConnected: boolean;
-  isDark: boolean;
-  totalAlerts: number;
-  bottomPadding: number;
-}
-
-interface NavItemDef {
-  id: NavTab;
-  label: string;
-  renderIcon: (color: string) => React.ReactNode;
-}
-
-const NAV_ITEMS: NavItemDef[] = [
-  {
-    id: 'monitor',
-    label: 'Monitor',
-    renderIcon: (color) => <MonitorIcon size={19} color={color} />,
-  },
-  {
-    id: 'alertas',
-    label: 'Alertas',
-    renderIcon: (color) => <AlertTriangleIcon size={19} color={color} />,
-  },
-  {
-    id: 'informes',
-    label: 'Informes',
-    renderIcon: (color) => <FileTextIcon size={19} color={color} />,
-  },
-  {
-    id: 'ajustes',
-    label: 'Ajustes',
-    renderIcon: (color) => <SettingsIcon size={19} color={color} />,
-  },
-];
-
-const BottomNav: React.FC<NavBarProps> = ({
-  active,
-  onSelect,
-  isConnected,
-  isDark,
-  totalAlerts,
-  bottomPadding,
-}) => {
-  const T = isDark ? DARK_THEME : LIGHT_THEME;
-  return (
-    <View
-      style={{
-        paddingBottom: bottomPadding,
-        backgroundColor: T.navBg,
-        borderTopWidth: 1,
-        borderTopColor: T.navBorder,
-        flexDirection: 'row',
-        paddingHorizontal: 8,
-        paddingTop: 8,
-        alignItems: 'center',
-        justifyContent: 'space-around',
-        shadowColor: '#000',
-        shadowOpacity: 0.4,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: -4 },
-        elevation: 16,
-      }}
-    >
-      {NAV_ITEMS.map((item) => {
-        const isActive = active === item.id;
-        const isAlert = item.id === 'alertas';
-
-        const iconColor = isActive
-          ? '#38BDF8'
-          : isDark ? '#64748B' : '#94A3B8';
-
-        return (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => onSelect(item.id)}
-            activeOpacity={0.7}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 2 }}
-          >
-            <View
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 16,
-                alignItems: 'center',
-                borderWidth: 1,
-                minWidth: 64,
-                position: 'relative',
-                backgroundColor: isActive ? 'rgba(14,165,233,0.14)' : 'transparent',
-                borderColor: isActive ? 'rgba(14,165,233,0.3)' : 'transparent',
-              }}
-            >
-              {item.renderIcon(iconColor)}
-
-              <Text style={{
-                fontSize: 10,
-                marginTop: 3,
-                fontWeight: '600',
-                color: isActive ? '#38BDF8' : isDark ? '#64748B' : '#94A3B8',
-                letterSpacing: 0.2,
-              }}>
-                {item.label}
-              </Text>
-
-              {/* Badge de Alertas activas */}
-              {isAlert && totalAlerts > 0 && (
-                <View style={{
-                  position: 'absolute', top: -4, right: -4,
-                  backgroundColor: '#EF4444', borderRadius: 10,
-                  paddingHorizontal: 5, paddingVertical: 2,
-                  minWidth: 16, alignItems: 'center', justifyContent: 'center',
-                  borderWidth: 1.5, borderColor: T.navBg,
-                  shadowColor: '#EF4444', shadowOpacity: 0.7, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
-                }}>
-                  <Text style={{ color: '#fff', fontSize: 8, fontWeight: 'bold', lineHeight: 11 }}>
-                    {totalAlerts > 99 ? '99+' : totalAlerts}
-                  </Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-};
-
-
-
-// ─────────────────────────────────────────────
-// Pantalla principal: DashboardScreen
-// ─────────────────────────────────────────────
-
-export const DashboardScreen: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<NavTab>('monitor');
+export const MonitorScreen: React.FC = () => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const navigation = useNavigation<NavigationProp<any>>();
 
   const {
     ph,
@@ -244,7 +88,6 @@ export const DashboardScreen: React.FC = () => {
     alertRanges,
     visibleMeters,
     historyData,
-    totalAlerts,
     theme,
     connectionMode,
     connectedDeviceName,
@@ -255,12 +98,10 @@ export const DashboardScreen: React.FC = () => {
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const horizontalScrollRef = useRef<ScrollView>(null);
 
   // Status bar & safe insets
   const topPadding =
     Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 20) + 8;
-  const bottomPadding = Math.max(insets.bottom, 8);
 
   // Paleta activa según tema
   const isDark = theme === 'dark';
@@ -277,29 +118,6 @@ export const DashboardScreen: React.FC = () => {
   const phStatus = evaluatePh(ph, alertRanges.ph);
   const tempStatus = evaluateTemperature(temperature, alertRanges.temperature);
   const turbidityStatus = evaluateTurbidity(turbidity, alertRanges.turbidity);
-
-
-  // ─── Control de Tabs y Gestos Swipe Horizontal ───
-  const NAV_TABS: NavTab[] = ['monitor', 'alertas', 'informes', 'ajustes'];
-
-  const handleSelectTab = (tab: NavTab) => {
-    setActiveTab(tab);
-    const index = NAV_TABS.indexOf(tab);
-    if (index !== -1 && horizontalScrollRef.current) {
-      horizontalScrollRef.current.scrollTo({
-        x: index * screenWidth,
-        animated: true,
-      });
-    }
-  };
-
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offsetX = e.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / screenWidth);
-    if (NAV_TABS[index] && NAV_TABS[index] !== activeTab) {
-      setActiveTab(NAV_TABS[index]);
-    }
-  };
 
   const gaugeWidth = (screenWidth - 44) / 2;
 
@@ -339,26 +157,28 @@ export const DashboardScreen: React.FC = () => {
                 height: 46,
                 backgroundColor: isDark
                   ? 'rgba(14, 165, 233, 0.12)'
-                  : 'rgba(14, 165, 233, 0.08)',
+                  : '#FFFFFF',
                 borderColor: isDark
                   ? 'rgba(14, 165, 233, 0.35)'
-                  : 'rgba(14, 165, 233, 0.25)',
+                  : 'rgba(14, 165, 233, 0.3)',
                 borderRadius: 14,
                 borderTopWidth: 1,
                 borderLeftWidth: 0.5,
-                borderTopColor: 'rgba(255,255,255,0.12)',
-                borderLeftColor: 'rgba(255,255,255,0.06)',
-                shadowColor: '#0EA5E9',
-                shadowOpacity: isDark ? 0.35 : 0.15,
+                borderTopColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.9)',
+                borderLeftColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.8)',
+                shadowColor: isDark ? '#0EA5E9' : '#0284C7',
+                shadowOpacity: isDark ? 0.35 : 0.12,
                 shadowRadius: 8,
                 shadowOffset: { width: 0, height: 2 },
+                elevation: 3,
               }}
               className="border items-center justify-center mr-3 p-1.5"
             >
               <Image
                 source={require('../assets/TPH_Monitor_Icon.png')}
                 style={{ width: 34, height: 34 }}
-                resizeMode="contain"
+                contentFit="contain"
+                transition={200}
               />
             </View>
 
@@ -442,18 +262,8 @@ export const DashboardScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* ─── BODY SWIPEABLE HORIZONTAL PAGER ─── */}
-      <ScrollView
-        ref={horizontalScrollRef}
-        horizontal={true}
-        pagingEnabled={true}
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScrollEnd}
-        style={{ flex: 1 }}
-      >
-        {/* ─── PÁGINA 0: MONITOR ─── */}
-        <View style={{ width: screenWidth, flex: 1 }}>
-          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} showsVerticalScrollIndicator={false}>
+      {/* ─── BODY (MONITORING CONTENT) ─── */}
+      <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} showsVerticalScrollIndicator={false}>
             {/* ── SECCIÓN 1: MEDIDORES DE CALIDAD EN TIEMPO REAL ── */}
             <View style={{ marginBottom: 18 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingHorizontal: 2 }}>
@@ -491,7 +301,7 @@ export const DashboardScreen: React.FC = () => {
                       Has ocultado todos los instrumentos. Personalízalos desde Ajustes.
                     </Text>
                     <TouchableOpacity
-                      onPress={() => handleSelectTab('ajustes')}
+                      onPress={() => navigation.navigate('Ajustes')}
                       activeOpacity={0.75}
                       style={{
                         marginTop: 12,
@@ -599,33 +409,6 @@ export const DashboardScreen: React.FC = () => {
             {/* Espacio inferior para no quedar tras la navbar */}
             <View style={{ paddingBottom: 100 }} />
           </ScrollView>
-        </View>
-
-        {/* ─── PÁGINA 1: ALERTAS Y LOGS ─── */}
-        <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-          <AlertsView />
-        </View>
-
-        {/* ─── PÁGINA 2: INFORMES ─── */}
-        <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-          <ReportsView />
-        </View>
-
-        {/* ─── PÁGINA 3: AJUSTES ─── */}
-        <View style={{ width: screenWidth, flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-          <SettingsView />
-        </View>
-      </ScrollView>
-
-      {/* ─── BARRA DE NAVEGACIÓN INFERIOR ─── */}
-      <BottomNav
-        active={activeTab}
-        onSelect={handleSelectTab}
-        isConnected={isConnected}
-        isDark={isDark}
-        totalAlerts={totalAlerts}
-        bottomPadding={bottomPadding}
-      />
 
       {/* ─── MODAL DE CONFIGURACIÓN ─── */}
       <ConfigModal

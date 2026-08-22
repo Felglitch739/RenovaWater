@@ -246,7 +246,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
     totalAlerts: 0,
     sessionStart: null,
     sessionStartTime: null,
-    theme: 'dark',
+    theme: 'light',
 
     setTheme: (theme: AppTheme) => set({ theme }),
 
@@ -361,7 +361,10 @@ export const useSensorStore = create<SensorState>((set, get) => ({
     },
 
     connectBleDevice: async (deviceId: string) => {
+      // Detener escaneo inmediatamente para liberar recursos de radio y CPU
+      get().stopBleScan();
       set({ isScanning: false, bleError: null });
+      
       const success = await bleService.connectToDevice(deviceId);
       if (success) {
         const dev = bleService.getConnectedDevice();
@@ -370,6 +373,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
           connectedDeviceName: dev?.name || 'ESP32 pH Sonda',
           isConnected: true,
           connectionMode: 'bluetooth',
+          isScanning: false,
         });
       }
       return success;
@@ -495,22 +499,52 @@ bleService.onStatusChange((status, error) => {
   const isNowScanning = status === 'scanning';
   const currentState = useSensorStore.getState();
 
+  // Evitar re-renders si no hubo cambios de estado
+  if (
+    currentState.bleStatus === status &&
+    currentState.isScanning === isNowScanning &&
+    currentState.isConnected === isNowConnected &&
+    currentState.bleError === (error || null)
+  ) {
+    return;
+  }
+
   useSensorStore.setState({
     bleStatus: status,
     isScanning: isNowScanning,
     isConnected: isNowConnected,
     bleError: error || null,
-    lastUpdated: isNowConnected ? new Date() : currentState.lastUpdated,
+    lastUpdated: isNowConnected ? (currentState.lastUpdated || new Date()) : currentState.lastUpdated,
     sessionStart: isNowConnected && !currentState.sessionStart ? new Date() : currentState.sessionStart,
     sessionStartTime: isNowConnected && !currentState.sessionStartTime ? Date.now() : currentState.sessionStartTime,
   });
 });
 
 bleService.onDevicesDiscovered((devices) => {
+  const currentDevices = useSensorStore.getState().bleDevices;
+
+  // Comparación superficial rápida para evitar disparar setState si los dispositivos son los mismos
+  if (currentDevices.length === devices.length) {
+    let hasChanges = false;
+    for (let i = 0; i < devices.length; i++) {
+      if (
+        currentDevices[i].id !== devices[i].id ||
+        currentDevices[i].name !== devices[i].name ||
+        currentDevices[i].rssi !== devices[i].rssi
+      ) {
+        hasChanges = true;
+        break;
+      }
+    }
+    if (!hasChanges) return;
+  }
+
   useSensorStore.setState({ bleDevices: devices });
 });
 
 bleService.onTelemetry((reading, rawText) => {
-  useSensorStore.getState().processTelemetryString(rawText);
+  if (rawText && typeof rawText === 'string') {
+    useSensorStore.getState().processTelemetryString(rawText);
+  }
 });
 

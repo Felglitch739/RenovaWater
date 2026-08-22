@@ -19,11 +19,10 @@ import {
   WavesIcon,
   ActivityIcon,
   BluetoothIcon,
-  CheckCircleIcon,
-  InfoIcon,
+  SunIcon,
+  MoonIcon,
   AlertTriangleIcon,
   PlayIcon,
-  StopIcon,
 } from './Icons';
 
 // ─────────────────────────────────────────────────────────────
@@ -38,78 +37,70 @@ interface MeterConfigItem {
   iconBg: string;
   iconBorder: string;
   renderIcon: (color: string) => React.ReactNode;
-  hardwareStatus: 'active' | 'standby';
 }
 
 const METER_CONFIGS: MeterConfigItem[] = [
   {
     id: 'wqi',
-    title: 'Índice Global de Calidad (WQI)',
-    subtitle: 'Puntaje de pureza consolidado y diagnóstico',
+    title: 'Índice Global WQI',
+    subtitle: 'Diagnóstico consolidado de calidad del agua',
     color: '#10B981',
     iconBg: 'rgba(16, 185, 129, 0.12)',
-    iconBorder: 'rgba(16, 185, 129, 0.3)',
+    iconBorder: 'rgba(16, 185, 129, 0.25)',
     renderIcon: (c) => <ActivityIcon size={16} color={c} />,
-    hardwareStatus: 'active',
   },
   {
     id: 'ph',
-    title: 'Medidor de pH (pH-4502C)',
-    subtitle: 'Sonda analógica activa con lectura en vivo (0 - 14)',
+    title: 'Sensor de pH (pH-4502C)',
+    subtitle: 'Medición electroquímica en tiempo real (0 - 14)',
     color: '#0EA5E9',
     iconBg: 'rgba(14, 165, 233, 0.12)',
-    iconBorder: 'rgba(14, 165, 233, 0.3)',
+    iconBorder: 'rgba(14, 165, 233, 0.25)',
     renderIcon: (c) => <DropletIcon size={16} color={c} />,
-    hardwareStatus: 'active',
   },
   {
     id: 'temperature',
-    title: 'Medidor de Temperatura',
-    subtitle: 'Arco térmico 240° · Esperando conexión de sonda',
+    title: 'Temperatura',
+    subtitle: 'Monitoreo térmico en grados Celsius (°C)',
     color: '#EF4444',
     iconBg: 'rgba(239, 68, 68, 0.12)',
-    iconBorder: 'rgba(239, 68, 68, 0.3)',
+    iconBorder: 'rgba(239, 68, 68, 0.25)',
     renderIcon: (c) => <ThermometerIcon size={16} color={c} />,
-    hardwareStatus: 'standby',
   },
   {
     id: 'conductivity',
     title: 'Conductividad Eléctrica',
-    subtitle: 'Gráfico spline de iones · Esperando sensor',
-    color: '#EAB308',
-    iconBg: 'rgba(234, 179, 8, 0.12)',
-    iconBorder: 'rgba(234, 179, 8, 0.3)',
+    subtitle: 'Concentración de sales y minerales (µS/cm)',
+    color: '#F59E0B',
+    iconBg: 'rgba(245, 158, 11, 0.12)',
+    iconBorder: 'rgba(245, 158, 11, 0.25)',
     renderIcon: (c) => <ZapIcon size={16} color={c} />,
-    hardwareStatus: 'standby',
   },
   {
     id: 'turbidity',
-    title: 'Medidor de Turbidez',
-    subtitle: 'Barra óptica NTU · Esperando sensor',
+    title: 'Turbidez Óptica',
+    subtitle: 'Claridad y sólidos suspendidos (NTU)',
     color: '#10B981',
     iconBg: 'rgba(16, 185, 129, 0.12)',
-    iconBorder: 'rgba(16, 185, 129, 0.3)',
+    iconBorder: 'rgba(16, 185, 129, 0.25)',
     renderIcon: (c) => <WavesIcon size={16} color={c} />,
-    hardwareStatus: 'standby',
   },
 ];
 
 // ─────────────────────────────────────────────────────────────
-// Vista principal: SettingsView (Pestaña de Ajustes y Hardware)
+// Vista principal: SettingsView (Ajustes de la Aplicación)
 // ─────────────────────────────────────────────────────────────
 
 export const SettingsView: React.FC = () => {
   const {
     visibleMeters,
     toggleMeter,
-    setVisibleMeters,
     resetVisibleMeters,
     alertRanges,
     isConnected,
     isScanning,
     connectionMode,
     setConnectionMode,
-    bleStatus,
     bleDevices,
     connectedDeviceName,
     connectedDeviceId,
@@ -117,22 +108,21 @@ export const SettingsView: React.FC = () => {
     startBleScan,
     stopBleScan,
     connectBleDevice,
-    disconnectBleDevice,
-    processTelemetryString,
     connect,
     disconnect,
     ph,
-    phClassification,
     adc,
     voltage,
     rawTelemetry,
     theme,
+    setTheme,
   } = useSensorStore();
 
   const isDark = theme === 'dark';
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
 
   const handleConnectDevice = async (deviceId: string) => {
     if (isConnecting || isConnected) return;
@@ -148,35 +138,6 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  // Cantidad de medidores activos
-  const activeCount = Object.values(visibleMeters).filter(Boolean).length;
-
-  const handleToggleAll = () => {
-    if (activeCount === 5) {
-      setVisibleMeters({
-        wqi: true,
-        ph: true,
-        temperature: false,
-        conductivity: false,
-        turbidity: false,
-      });
-    } else {
-      resetVisibleMeters();
-    }
-  };
-
-  const getPhClassificationBadge = () => {
-    if (phClassification === 'ÁCIDO') {
-      return { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.35)', text: '#EF4444' };
-    }
-    if (phClassification === 'NEUTRO') {
-      return { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.35)', text: '#10B981' };
-    }
-    return { bg: 'rgba(192, 132, 252, 0.15)', border: 'rgba(192, 132, 252, 0.35)', text: '#C084FC' };
-  };
-
-  const phBadge = getPhClassificationBadge();
-
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -184,42 +145,43 @@ export const SettingsView: React.FC = () => {
       contentContainerStyle={{ paddingBottom: 40 }}
     >
       {/* ── Cabecera ── */}
-      <View style={{ marginBottom: 14 }}>
+      <View style={{ marginBottom: 18 }}>
         <Text style={[styles.mainHeading, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-          Ajustes y Conexión Hardware
+          Ajustes
         </Text>
         <Text style={[styles.subHeading, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-          Administra la conexión Bluetooth con el ESP32, telemetría del pH y calibración
+          Conectividad, apariencia y parámetros del sistema
         </Text>
       </View>
 
-      {/* ── SECCIÓN 1: CONEXIÓN BLUETOOTH BLE CON ESP32 ── */}
+      {/* ── SECCIÓN 1: CONEXIÓN BLUETOOTH / HARDWARE ── */}
       <View style={{ marginBottom: 18 }}>
         <View style={styles.sectionHeaderRow}>
           <Text style={[styles.sectionTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-            Conectividad Bluetooth BLE (ESP32)
+            Conexión Hardware
           </Text>
           <View
             style={[
-              styles.countBadge,
+              styles.statusBadge,
               {
-                backgroundColor: isConnected ? 'rgba(16,185,129,0.12)' : 'rgba(100,116,139,0.12)',
-                borderColor: isConnected ? 'rgba(16,185,129,0.3)' : 'rgba(100,116,139,0.25)',
+                backgroundColor: isConnected ? (isDark ? 'rgba(16,185,129,0.15)' : '#ECFDF5') : (isDark ? 'rgba(100,116,139,0.12)' : '#F1F5F9'),
+                borderColor: isConnected ? (isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0') : (isDark ? 'rgba(100,116,139,0.2)' : '#E2E8F0'),
               },
             ]}
           >
-            <Text style={[styles.countText, { color: isConnected ? '#10B981' : '#94A3B8' }]}>
-              {isConnected ? 'EN LÍNEA' : 'DESCONECTADO'}
+            <View style={[styles.statusDot, { backgroundColor: isConnected ? '#10B981' : '#94A3B8' }]} />
+            <Text style={[styles.statusBadgeText, { color: isConnected ? '#10B981' : '#64748B' }]}>
+              {isConnected ? 'Conectado' : 'Desconectado'}
             </Text>
           </View>
         </View>
 
         <AuraCard
           colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
-          radius={20}
+          radius={18}
         >
           <View style={styles.cardContent}>
-            {/* Selector de Modo: Hardware Real vs Simulación */}
+            {/* Selector de Modo */}
             <View style={[styles.modeSelectorRow, { backgroundColor: isDark ? '#11161F' : '#F1F5F9' }]}>
               <TouchableOpacity
                 onPress={() => setConnectionMode('bluetooth')}
@@ -229,7 +191,7 @@ export const SettingsView: React.FC = () => {
                   connectionMode === 'bluetooth' && {
                     backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
                     shadowColor: '#000',
-                    shadowOpacity: 0.1,
+                    shadowOpacity: isDark ? 0.2 : 0.06,
                     shadowRadius: 4,
                     elevation: 2,
                   },
@@ -242,7 +204,7 @@ export const SettingsView: React.FC = () => {
                     { color: connectionMode === 'bluetooth' ? (isDark ? '#F1F5F9' : '#0F172A') : '#64748B' },
                   ]}
                 >
-                  ESP32 BLE Real
+                  Bluetooth ESP32
                 </Text>
               </TouchableOpacity>
 
@@ -254,7 +216,7 @@ export const SettingsView: React.FC = () => {
                   connectionMode === 'simulation' && {
                     backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
                     shadowColor: '#000',
-                    shadowOpacity: 0.1,
+                    shadowOpacity: isDark ? 0.2 : 0.06,
                     shadowRadius: 4,
                     elevation: 2,
                   },
@@ -280,77 +242,99 @@ export const SettingsView: React.FC = () => {
               </View>
             )}
 
-            {/* Dispositivo conectado actualmente */}
-            {isConnected && (
-              <View
-                style={[
-                  styles.activeDeviceCard,
-                  {
-                    backgroundColor: isDark ? 'rgba(16,185,129,0.06)' : '#ECFDF5',
-                    borderColor: isDark ? 'rgba(16,185,129,0.25)' : '#A7F3D0',
-                  },
-                ]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                  <View style={[styles.iconWrap, { backgroundColor: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.35)' }]}>
-                    <BluetoothIcon size={18} color="#10B981" />
+            {/* Dispositivo conectado */}
+            {isConnected ? (
+              <View>
+                <View
+                  style={[
+                    styles.activeDeviceCard,
+                    {
+                      backgroundColor: isDark ? 'rgba(16,185,129,0.06)' : '#F0FDF4',
+                      borderColor: isDark ? 'rgba(16,185,129,0.25)' : '#BBF7D0',
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                    <View style={[styles.deviceIconBox, { backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#DCFCE7' }]}>
+                      <BluetoothIcon size={16} color="#10B981" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.deviceNameText, { color: isDark ? '#F1F5F9' : '#0F172A' }]} numberOfLines={1}>
+                        {connectedDeviceName || 'ESP32 pH Sonda'}
+                      </Text>
+                      <Text style={[styles.deviceMetaText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                        {connectedDeviceId ? connectedDeviceId : 'Transmisión UART activa'}
+                      </Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={[styles.bleTitle, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-                      {connectedDeviceName || 'ESP32 pH Sonda'}
-                    </Text>
-                    <Text style={[styles.bleSubtitle, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                      {connectedDeviceId ? `ID: ${connectedDeviceId}` : 'Enlace UART Activo (12-bit ADC)'}
-                    </Text>
-                  </View>
+
+                  <TouchableOpacity
+                    onPress={disconnect}
+                    activeOpacity={0.7}
+                    style={styles.disconnectButton}
+                  >
+                    <Text style={styles.disconnectButtonText}>Desconectar</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  onPress={disconnect}
-                  activeOpacity={0.7}
-                  style={styles.disconnectMiniBtn}
-                >
-                  <Text style={styles.disconnectMiniText}>Desconectar</Text>
-                </TouchableOpacity>
+                {/* Resumen de telemetría en vivo */}
+                <View style={[styles.liveDataBar, { backgroundColor: isDark ? '#11161F' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+                  <View style={styles.liveDataItem}>
+                    <Text style={[styles.liveDataLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>pH ACTUAL</Text>
+                    <Text style={[styles.liveDataValue, { color: '#0EA5E9' }]}>{ph.toFixed(2)}</Text>
+                  </View>
+                  <View style={[styles.liveDataDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
+                  <View style={styles.liveDataItem}>
+                    <Text style={[styles.liveDataLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>VOLTAJE</Text>
+                    <Text style={[styles.liveDataValue, { color: '#F59E0B' }]}>{voltage !== null ? `${voltage.toFixed(2)} V` : '--'}</Text>
+                  </View>
+                  <View style={[styles.liveDataDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
+                  <View style={styles.liveDataItem}>
+                    <Text style={[styles.liveDataLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>ADC</Text>
+                    <Text style={[styles.liveDataValue, { color: isDark ? '#94A3B8' : '#64748B' }]}>{adc !== null ? Math.round(adc) : '--'}</Text>
+                  </View>
+                </View>
               </View>
-            )}
-
-            {/* Botones de Control BLE */}
-            {!isConnected && connectionMode === 'bluetooth' && (
+            ) : connectionMode === 'bluetooth' ? (
               <View>
+                {/* Botón de Escaneo */}
                 <TouchableOpacity
                   onPress={isScanning ? stopBleScan : startBleScan}
                   activeOpacity={0.8}
                   style={[
-                    styles.bleActionBtn,
+                    styles.primaryActionBtn,
                     {
-                      backgroundColor: isScanning ? 'rgba(251,191,36,0.12)' : 'rgba(14,165,233,0.12)',
-                      borderColor: isScanning ? 'rgba(251,191,36,0.4)' : 'rgba(14,165,233,0.4)',
+                      backgroundColor: isScanning
+                        ? (isDark ? 'rgba(245,158,11,0.12)' : '#FFFBEB')
+                        : (isDark ? 'rgba(14,165,233,0.12)' : '#F0F9FF'),
+                      borderColor: isScanning
+                        ? (isDark ? 'rgba(245,158,11,0.35)' : '#FCD34D')
+                        : (isDark ? 'rgba(14,165,233,0.35)' : '#BAE6FD'),
                     },
                   ]}
                 >
                   {isScanning ? (
                     <>
-                      <ActivityIndicator size="small" color="#FBBF24" style={{ marginRight: 8 }} />
-                      <Text style={[styles.bleActionBtnText, { color: '#FBBF24' }]}>
+                      <ActivityIndicator size="small" color="#F59E0B" style={{ marginRight: 8 }} />
+                      <Text style={[styles.primaryActionBtnText, { color: '#F59E0B' }]}>
                         Buscando dispositivos ESP32...
                       </Text>
                     </>
                   ) : (
                     <>
                       <BluetoothIcon size={16} color="#0EA5E9" />
-                      <Text style={[styles.bleActionBtnText, { color: '#0EA5E9' }]}>
-                        Escanear Dispositivos ESP32 BLE
+                      <Text style={[styles.primaryActionBtnText, { color: '#0EA5E9' }]}>
+                        Buscar Dispositivos BLE
                       </Text>
                     </>
                   )}
                 </TouchableOpacity>
 
-                {/* Lista de Dispositivos Descubiertos */}
+                {/* Lista de Dispositivos */}
                 {bleDevices.length > 0 && (
                   <View style={{ marginTop: 12 }}>
-                    <Text style={[styles.devicesListHeader, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                      Dispositivos Detectados ({bleDevices.length}):
+                    <Text style={[styles.devicesSectionTitle, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                      Dispositivos cercanos ({bleDevices.length}):
                     </Text>
 
                     {bleDevices.map((dev) => {
@@ -364,49 +348,38 @@ export const SettingsView: React.FC = () => {
                           disabled={isConnecting || isConnected}
                           activeOpacity={0.7}
                           style={[
-                            styles.deviceListItem,
+                            styles.deviceRow,
                             {
                               backgroundColor: isEsp
-                                ? isDark ? 'rgba(14,165,233,0.08)' : '#F0F9FF'
-                                : isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                                ? (isDark ? 'rgba(14,165,233,0.08)' : '#F0F9FF')
+                                : (isDark ? '#11161F' : '#F8FAFC'),
                               borderColor: isEsp
-                                ? '#0EA5E9'
-                                : isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                                ? (isDark ? 'rgba(14,165,233,0.35)' : '#BAE6FD')
+                                : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
                               opacity: (isConnecting && !isThisConnecting) ? 0.5 : 1,
                             },
                           ]}
                         >
-                          <View style={{ flex: 1 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={[styles.deviceItemName, { color: isEsp ? '#0EA5E9' : (isDark ? '#F1F5F9' : '#0F172A') }]}>
-                                {dev.name || 'Dispositivo Desconocido'}
-                              </Text>
-                              {isEsp && (
-                                <View style={styles.espBadge}>
-                                  <Text style={styles.espBadgeText}>ESP32 DETECTADO</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={[styles.deviceItemId, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={[styles.deviceItemTitle, { color: isEsp ? '#0EA5E9' : (isDark ? '#F1F5F9' : '#0F172A') }]}>
+                              {dev.name || 'Dispositivo Desconocido'}
+                            </Text>
+                            <Text style={[styles.deviceItemSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
                               {dev.id} {dev.rssi !== null ? `· ${dev.rssi} dBm` : ''}
                             </Text>
                           </View>
 
                           <View
                             style={[
-                              styles.connectDeviceBtn,
-                              isEsp && { backgroundColor: '#0EA5E9' },
-                              isThisConnecting && { backgroundColor: '#F59E0B', minWidth: 95, flexDirection: 'row', gap: 4, justifyContent: 'center' },
-                              (isConnecting && !isThisConnecting) && { backgroundColor: '#64748B' },
+                              styles.connectBtnSmall,
+                              isEsp ? { backgroundColor: '#0EA5E9' } : { backgroundColor: isDark ? '#334155' : '#64748B' },
+                              isThisConnecting && { backgroundColor: '#F59E0B', minWidth: 85 },
                             ]}
                           >
                             {isThisConnecting ? (
-                              <>
-                                <ActivityIndicator size="small" color="#FFFFFF" />
-                                <Text style={styles.connectDeviceBtnText}>Conectando...</Text>
-                              </>
+                              <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
-                              <Text style={styles.connectDeviceBtnText}>Conectar</Text>
+                              <Text style={styles.connectBtnSmallText}>Conectar</Text>
                             )}
                           </View>
                         </TouchableOpacity>
@@ -416,29 +389,27 @@ export const SettingsView: React.FC = () => {
                 )}
 
                 {bleDevices.length === 0 && !isScanning && (
-                  <Text style={[styles.scanHintText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                    Asegúrate de que el ESP32 esté encendido con el Bluetooth activado y transmitiendo datos.
+                  <Text style={[styles.hintText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                    Enciende el ESP32 y presiona "Buscar Dispositivos BLE" para sincronizar.
                   </Text>
                 )}
               </View>
-            )}
-
-            {/* En modo simulación */}
-            {!isConnected && connectionMode === 'simulation' && (
+            ) : (
+              /* Modo simulación */
               <TouchableOpacity
                 onPress={connect}
                 activeOpacity={0.8}
                 style={[
-                  styles.bleActionBtn,
+                  styles.primaryActionBtn,
                   {
-                    backgroundColor: 'rgba(16,185,129,0.12)',
-                    borderColor: 'rgba(16,185,129,0.4)',
+                    backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : '#F0FDF4',
+                    borderColor: isDark ? 'rgba(16,185,129,0.35)' : '#BBF7D0',
                   },
                 ]}
               >
-                <PlayIcon size={16} color="#10B981" />
-                <Text style={[styles.bleActionBtnText, { color: '#10B981' }]}>
-                  Iniciar Simulación de Telemetría pH
+                <PlayIcon size={15} color="#10B981" />
+                <Text style={[styles.primaryActionBtnText, { color: '#10B981' }]}>
+                  Iniciar Simulación de Telemetría
                 </Text>
               </TouchableOpacity>
             )}
@@ -446,220 +417,88 @@ export const SettingsView: React.FC = () => {
         </AuraCard>
       </View>
 
-      {/* ── SECCIÓN 2: TELEMETRÍA TÉCNICA DEL ESP32 (DEPURACIÓN Y CALIBRACIÓN) ── */}
+      {/* ── SECCIÓN 2: APARIENCIA DEL SISTEMA ── */}
       <View style={{ marginBottom: 18 }}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-            Telemetría Técnica del Sensor pH
-          </Text>
-          <View
-            style={[
-              styles.countBadge,
-              {
-                backgroundColor: 'rgba(14,165,233,0.12)',
-                borderColor: 'rgba(14,165,233,0.3)',
-              },
-            ]}
-          >
-            <Text style={[styles.countText, { color: '#0EA5E9' }]}>pH-4502C</Text>
-          </View>
-        </View>
+        <Text style={[styles.sectionTitle, { color: isDark ? '#94A3B8' : '#64748B', marginBottom: 8 }]}>
+          Apariencia
+        </Text>
 
         <AuraCard
           colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
-          radius={20}
+          radius={18}
         >
           <View style={styles.cardContent}>
-            {/* Grid de valores técnicos: ADC, Voltaje, pH */}
-            <View style={styles.techMetricsGrid}>
-              {/* ADC */}
-              <View
+            <View style={[styles.modeSelectorRow, { backgroundColor: isDark ? '#11161F' : '#F1F5F9', marginBottom: 0 }]}>
+              <TouchableOpacity
+                onPress={() => setTheme('light')}
+                activeOpacity={0.8}
                 style={[
-                  styles.techMetricCard,
-                  {
-                    backgroundColor: isDark ? 'rgba(14,165,233,0.06)' : '#F0F9FF',
-                    borderColor: isDark ? 'rgba(14,165,233,0.2)' : '#BAE6FD',
+                  styles.modeButton,
+                  !isDark && {
+                    backgroundColor: '#FFFFFF',
+                    shadowColor: '#000',
+                    shadowOpacity: 0.08,
+                    shadowRadius: 4,
+                    elevation: 2,
                   },
                 ]}
               >
-                <Text style={[styles.techMetricLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
-                  ADC (12-bit)
+                <SunIcon size={15} color={!isDark ? '#F59E0B' : '#64748B'} />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: !isDark ? '#0F172A' : '#64748B' },
+                  ]}
+                >
+                  Modo Claro
                 </Text>
-                <Text style={[styles.techMetricValue, { color: '#0EA5E9' }]}>
-                  {adc !== null ? adc.toFixed(2) : '--'}
-                </Text>
-                <Text style={[styles.techMetricSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                  Rango: 0 a 4095
-                </Text>
-              </View>
+              </TouchableOpacity>
 
-              {/* Voltaje */}
-              <View
+              <TouchableOpacity
+                onPress={() => setTheme('dark')}
+                activeOpacity={0.8}
                 style={[
-                  styles.techMetricCard,
-                  {
-                    backgroundColor: isDark ? 'rgba(234,179,8,0.06)' : '#FFFBEB',
-                    borderColor: isDark ? 'rgba(234,179,8,0.2)' : '#FDE68A',
+                  styles.modeButton,
+                  isDark && {
+                    backgroundColor: '#1E293B',
+                    shadowColor: '#000',
+                    shadowOpacity: 0.25,
+                    shadowRadius: 4,
+                    elevation: 2,
                   },
                 ]}
               >
-                <Text style={[styles.techMetricLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
-                  Voltaje Analógico
+                <MoonIcon size={15} color={isDark ? '#38BDF8' : '#64748B'} />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: isDark ? '#F1F5F9' : '#64748B' },
+                  ]}
+                >
+                  Modo Oscuro
                 </Text>
-                <Text style={[styles.techMetricValue, { color: '#FACC15' }]}>
-                  {voltage !== null ? `${voltage.toFixed(2)} V` : '--'}
-                </Text>
-                <Text style={[styles.techMetricSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                  Entrada: 0.0 - 3.3V
-                </Text>
-              </View>
-
-              {/* Nivel de pH con clasificación */}
-              <View
-                style={[
-                  styles.techMetricCard,
-                  {
-                    backgroundColor: isDark ? 'rgba(16,185,129,0.06)' : '#ECFDF5',
-                    borderColor: isDark ? 'rgba(16,185,129,0.2)' : '#A7F3D0',
-                  },
-                ]}
-              >
-                <Text style={[styles.techMetricLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
-                  pH Calculado
-                </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={[styles.techMetricValue, { color: '#10B981' }]}>
-                    {ph.toFixed(2)}
-                  </Text>
-                  <View
-                    style={[
-                      styles.classificationBadge,
-                      {
-                        backgroundColor: phBadge.bg,
-                        borderColor: phBadge.border,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.classificationText, { color: phBadge.text }]}>
-                      {phClassification}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={[styles.techMetricSub, { color: isDark ? '#64748B' : '#94A3B8' }]}>
-                  Escala: 0 a 14 pH
-                </Text>
-              </View>
-            </View>
-
-            {/* Consola de paquete crudo recibido */}
-            <View style={styles.consoleContainer}>
-              <View style={styles.consoleHeader}>
-                <Text style={styles.consoleTitle}>ÚLTIMA TRAMA DE ENTRADA (RAW BLE):</Text>
-                <View style={styles.consoleStatusDot} />
-              </View>
-              <View style={styles.consoleBox}>
-                <Text style={styles.consoleText}>
-                  {rawTelemetry || 'ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00'}
-                </Text>
-              </View>
-
-              {/* Botones de Prueba Rápida de Telemetría */}
-              <View style={{ marginTop: 10 }}>
-                <Text style={[styles.quickTestHeader, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  PROBAR FORMATO DE TELEMETRÍA ESP32:
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                  <TouchableOpacity
-                    onPress={() => processTelemetryString('ADC: 1350.00 | Voltaje: 1.08 V | pH: 5.20')}
-                    activeOpacity={0.7}
-                    style={[styles.quickTestBtn, { borderColor: 'rgba(239,68,68,0.4)', backgroundColor: 'rgba(239,68,68,0.1)' }]}
-                  >
-                    <Text style={[styles.quickTestText, { color: '#EF4444' }]}>Ácido (5.20)</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => processTelemetryString('ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00')}
-                    activeOpacity={0.7}
-                    style={[styles.quickTestBtn, { borderColor: 'rgba(16,185,129,0.4)', backgroundColor: 'rgba(16,185,129,0.1)' }]}
-                  >
-                    <Text style={[styles.quickTestText, { color: '#10B981' }]}>Neutro (7.00)</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => processTelemetryString('ADC: 2850.00 | Voltaje: 2.30 V | pH: 8.80')}
-                    activeOpacity={0.7}
-                    style={[styles.quickTestBtn, { borderColor: 'rgba(192,132,252,0.4)', backgroundColor: 'rgba(192,132,252,0.1)' }]}
-                  >
-                    <Text style={[styles.quickTestText, { color: '#C084FC' }]}>Alcalino (8.80)</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-
-            {/* Estado de Hardware de Sensores */}
-            <View style={[styles.hardwareStatusContainer, { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-              <Text style={[styles.hardwareStatusTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                ESTADO DE SENSORES FÍSICOS:
-              </Text>
-              
-              <View style={styles.sensorStatusRow}>
-                <View style={styles.sensorStatusIndicator}>
-                  <View style={[styles.sensorDot, { backgroundColor: '#10B981' }]} />
-                  <Text style={[styles.sensorStatusName, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-                    Sensor pH (pH-4502C):
-                  </Text>
-                </View>
-                <Text style={[styles.sensorStatusState, { color: '#10B981' }]}>
-                  CONECTADO / TRANSMITIENDO
-                </Text>
-              </View>
-
-              <View style={styles.sensorStatusRow}>
-                <View style={styles.sensorStatusIndicator}>
-                  <View style={[styles.sensorDot, { backgroundColor: '#F59E0B' }]} />
-                  <Text style={[styles.sensorStatusName, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                    Temperatura, Turbidez, Conductividad:
-                  </Text>
-                </View>
-                <Text style={[styles.sensorStatusState, { color: '#F59E0B' }]}>
-                  PENDIENTE (Sin hardware)
-                </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </AuraCard>
       </View>
 
-      {/* ── SECCIÓN 3: FILTRO DE MEDIDORES EN EL DASHBOARD ── */}
+      {/* ── SECCIÓN 3: MEDIDORES EN PANTALLA ── */}
       <View style={{ marginBottom: 18 }}>
         <View style={styles.sectionHeaderRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={[styles.sectionTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-              Medidores en Pantalla
-            </Text>
-            <View
-              style={[
-                styles.countBadge,
-                {
-                  backgroundColor: isDark ? 'rgba(14,165,233,0.12)' : 'rgba(14,165,233,0.08)',
-                  borderColor: isDark ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.2)',
-                },
-              ]}
-            >
-              <Text style={styles.countText}>{activeCount} / 5 ACTIVOS</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity onPress={handleToggleAll} activeOpacity={0.7}>
-            <Text style={[styles.toggleAllBtn, { color: '#0EA5E9' }]}>
-              {activeCount === 5 ? 'Ocultar otros' : 'Activar todos'}
+          <Text style={[styles.sectionTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+            Medidores en Pantalla
+          </Text>
+          <TouchableOpacity onPress={resetVisibleMeters} activeOpacity={0.7}>
+            <Text style={[styles.headerActionText, { color: '#0EA5E9' }]}>
+              Restablecer
             </Text>
           </TouchableOpacity>
         </View>
 
         <AuraCard
           colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
-          radius={20}
+          radius={18}
         >
           <View style={styles.cardContent}>
             {METER_CONFIGS.map((meter, index) => {
@@ -679,7 +518,7 @@ export const SettingsView: React.FC = () => {
                 >
                   <View
                     style={[
-                      styles.iconWrap,
+                      styles.meterIconBox,
                       {
                         backgroundColor: meter.iconBg,
                         borderColor: meter.iconBorder,
@@ -689,31 +528,20 @@ export const SettingsView: React.FC = () => {
                     {meter.renderIcon(meter.color)}
                   </View>
 
-                  <View style={styles.meterTextCol}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text
-                        style={[
-                          styles.meterTitle,
-                          {
-                            color: isEnabled
-                              ? isDark ? '#F1F5F9' : '#0F172A'
-                              : isDark ? '#64748B' : '#94A3B8',
-                          },
-                        ]}
-                      >
-                        {meter.title}
-                      </Text>
-                      {meter.hardwareStatus === 'active' ? (
-                        <View style={styles.activePill}>
-                          <Text style={styles.activePillText}>Activo</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.standbyPill}>
-                          <Text style={styles.standbyPillText}>Standby</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[styles.meterSubtitle, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+                  <View style={styles.meterTextColumn}>
+                    <Text
+                      style={[
+                        styles.meterTitleText,
+                        {
+                          color: isEnabled
+                            ? (isDark ? '#F1F5F9' : '#0F172A')
+                            : (isDark ? '#64748B' : '#94A3B8'),
+                        },
+                      ]}
+                    >
+                      {meter.title}
+                    </Text>
+                    <Text style={[styles.meterSubtitleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
                       {meter.subtitle}
                     </Text>
                   </View>
@@ -725,7 +553,7 @@ export const SettingsView: React.FC = () => {
                       false: isDark ? '#27272a' : '#E2E8F0',
                       true: 'rgba(14, 165, 233, 0.4)',
                     }}
-                    thumbColor={isEnabled ? '#0EA5E9' : isDark ? '#71717a' : '#94A3B8'}
+                    thumbColor={isEnabled ? '#0EA5E9' : (isDark ? '#71717a' : '#94A3B8')}
                   />
                 </View>
               );
@@ -734,14 +562,14 @@ export const SettingsView: React.FC = () => {
         </AuraCard>
       </View>
 
-      {/* ── SECCIÓN 4: CALIBRACIÓN Y UMBRALES DE ALERTA ── */}
+      {/* ── SECCIÓN 4: UMBRALES DE CALIDAD Y ALERTAS ── */}
       <View style={{ marginBottom: 18 }}>
         <View style={styles.sectionHeaderRow}>
           <Text style={[styles.sectionTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-            Calibración de Umbrales
+            Umbrales de Calidad
           </Text>
           <TouchableOpacity onPress={() => setIsConfigModalOpen(true)} activeOpacity={0.7}>
-            <Text style={[styles.toggleAllBtn, { color: '#0EA5E9' }]}>
+            <Text style={[styles.headerActionText, { color: '#0EA5E9' }]}>
               Editar
             </Text>
           </TouchableOpacity>
@@ -749,7 +577,7 @@ export const SettingsView: React.FC = () => {
 
         <AuraCard
           colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
-          radius={20}
+          radius={18}
         >
           <View style={styles.cardContent}>
             <View style={styles.thresholdsGrid}>
@@ -763,23 +591,13 @@ export const SettingsView: React.FC = () => {
                   },
                 ]}
               >
-                <View style={styles.thresholdCardHeader}>
-                  <View
-                    style={[
-                      styles.thresholdMiniIcon,
-                      {
-                        backgroundColor: isDark ? 'rgba(14,165,233,0.15)' : '#E0F2FE',
-                        borderColor: isDark ? 'rgba(14,165,233,0.35)' : '#7DD3FC',
-                      },
-                    ]}
-                  >
-                    <DropletIcon size={12} color={isDark ? '#38BDF8' : '#0284C7'} />
-                  </View>
-                  <Text style={[styles.thresholdCardLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
-                    pH Neutro / Óptimo
+                <View style={styles.thresholdIconRow}>
+                  <DropletIcon size={13} color={isDark ? '#38BDF8' : '#0284C7'} />
+                  <Text style={[styles.thresholdLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
+                    pH Óptimo
                   </Text>
                 </View>
-                <Text style={[styles.thresholdCardValue, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
+                <Text style={[styles.thresholdValue, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
                   {alertRanges.ph.min} – {alertRanges.ph.max} <Text style={styles.thresholdUnit}>pH</Text>
                 </Text>
               </View>
@@ -794,23 +612,13 @@ export const SettingsView: React.FC = () => {
                   },
                 ]}
               >
-                <View style={styles.thresholdCardHeader}>
-                  <View
-                    style={[
-                      styles.thresholdMiniIcon,
-                      {
-                        backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEE2E2',
-                        borderColor: isDark ? 'rgba(239,68,68,0.35)' : '#FCA5A5',
-                      },
-                    ]}
-                  >
-                    <ThermometerIcon size={12} color={isDark ? '#F87171' : '#DC2626'} />
-                  </View>
-                  <Text style={[styles.thresholdCardLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
-                    Temp. Ideal
+                <View style={styles.thresholdIconRow}>
+                  <ThermometerIcon size={13} color={isDark ? '#F87171' : '#DC2626'} />
+                  <Text style={[styles.thresholdLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
+                    Temperatura
                   </Text>
                 </View>
-                <Text style={[styles.thresholdCardValue, { color: isDark ? '#F87171' : '#DC2626' }]}>
+                <Text style={[styles.thresholdValue, { color: isDark ? '#F87171' : '#DC2626' }]}>
                   {alertRanges.temperature.min} – {alertRanges.temperature.max} <Text style={styles.thresholdUnit}>°C</Text>
                 </Text>
               </View>
@@ -820,28 +628,18 @@ export const SettingsView: React.FC = () => {
                 style={[
                   styles.thresholdCard,
                   {
-                    backgroundColor: isDark ? 'rgba(234,179,8,0.06)' : '#FFFBEB',
-                    borderColor: isDark ? 'rgba(234,179,8,0.2)' : '#FDE68A',
+                    backgroundColor: isDark ? 'rgba(245,158,11,0.06)' : '#FFFBEB',
+                    borderColor: isDark ? 'rgba(245,158,11,0.2)' : '#FDE68A',
                   },
                 ]}
               >
-                <View style={styles.thresholdCardHeader}>
-                  <View
-                    style={[
-                      styles.thresholdMiniIcon,
-                      {
-                        backgroundColor: isDark ? 'rgba(234,179,8,0.15)' : '#FEF3C7',
-                        borderColor: isDark ? 'rgba(234,179,8,0.35)' : '#FDE68A',
-                      },
-                    ]}
-                  >
-                    <ZapIcon size={12} color={isDark ? '#FACC15' : '#D97706'} />
-                  </View>
-                  <Text style={[styles.thresholdCardLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
+                <View style={styles.thresholdIconRow}>
+                  <ZapIcon size={13} color={isDark ? '#FACC15' : '#D97706'} />
+                  <Text style={[styles.thresholdLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
                     Conductividad
                   </Text>
                 </View>
-                <Text style={[styles.thresholdCardValue, { color: isDark ? '#FACC15' : '#D97706' }]}>
+                <Text style={[styles.thresholdValue, { color: isDark ? '#FACC15' : '#D97706' }]}>
                   {alertRanges.conductivity?.min ?? 250} – {alertRanges.conductivity?.max ?? 750} <Text style={styles.thresholdUnit}>µS</Text>
                 </Text>
               </View>
@@ -856,23 +654,13 @@ export const SettingsView: React.FC = () => {
                   },
                 ]}
               >
-                <View style={styles.thresholdCardHeader}>
-                  <View
-                    style={[
-                      styles.thresholdMiniIcon,
-                      {
-                        backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#D1FAE5',
-                        borderColor: isDark ? 'rgba(16,185,129,0.35)' : '#6EE7B7',
-                      },
-                    ]}
-                  >
-                    <WavesIcon size={12} color={isDark ? '#34D399' : '#059669'} />
-                  </View>
-                  <Text style={[styles.thresholdCardLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
+                <View style={styles.thresholdIconRow}>
+                  <WavesIcon size={13} color={isDark ? '#34D399' : '#059669'} />
+                  <Text style={[styles.thresholdLabel, { color: isDark ? '#94A3B8' : '#475569' }]}>
                     Turbidez Máx
                   </Text>
                 </View>
-                <Text style={[styles.thresholdCardValue, { color: isDark ? '#34D399' : '#059669' }]}>
+                <Text style={[styles.thresholdValue, { color: isDark ? '#34D399' : '#059669' }]}>
                   ≤ {alertRanges.turbidity.max} <Text style={styles.thresholdUnit}>NTU</Text>
                 </Text>
               </View>
@@ -882,24 +670,56 @@ export const SettingsView: React.FC = () => {
               onPress={() => setIsConfigModalOpen(true)}
               activeOpacity={0.75}
               style={[
-                styles.configActionBtn,
+                styles.editThresholdsBtn,
                 {
-                  backgroundColor: isDark ? 'rgba(14,165,233,0.1)' : 'rgba(14,165,233,0.06)',
-                  borderColor: isDark ? 'rgba(14,165,233,0.3)' : 'rgba(14,165,233,0.2)',
+                  backgroundColor: isDark ? 'rgba(14,165,233,0.08)' : 'rgba(14,165,233,0.06)',
+                  borderColor: isDark ? 'rgba(14,165,233,0.25)' : 'rgba(14,165,233,0.2)',
                 },
               ]}
             >
               <SettingsIcon size={14} color="#0EA5E9" />
-              <Text style={styles.configActionText}>Calibrar y Configurar Umbrales</Text>
+              <Text style={styles.editThresholdsBtnText}>Modificar Umbrales y Rangos</Text>
             </TouchableOpacity>
           </View>
         </AuraCard>
       </View>
 
-      {/* ── SECCIÓN 5: INFORMACIÓN DEL SISTEMA ── */}
-      <View style={{ alignItems: 'center', marginTop: 6 }}>
+      {/* ── SECCIÓN 5: INFORMACIÓN TÉCNICA (DISCRETA / COLAPSABLE) ── */}
+      <View style={{ marginBottom: 18 }}>
+        <TouchableOpacity
+          onPress={() => setShowTechnicalDetails(!showTechnicalDetails)}
+          activeOpacity={0.7}
+          style={styles.techToggleRow}
+        >
+          <Text style={[styles.techToggleText, { color: isDark ? '#64748B' : '#94A3B8' }]}>
+            {showTechnicalDetails ? 'Ocultar diagnóstico técnico ▲' : 'Diagnóstico técnico y telemetría ▼'}
+          </Text>
+        </TouchableOpacity>
+
+        {showTechnicalDetails && (
+          <AuraCard
+            colors={isDark ? ['#1C222B', '#14181F'] : ['#FFFFFF', '#F8FAFC']}
+            radius={16}
+            style={{ marginTop: 8 }}
+          >
+            <View style={styles.cardContent}>
+              <Text style={[styles.rawTelemetryLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                ÚLTIMA TRAMA RAW (UART BLE):
+              </Text>
+              <View style={[styles.rawTelemetryBox, { backgroundColor: isDark ? '#0A0D14' : '#F1F5F9', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+                <Text style={[styles.rawTelemetryText, { color: '#0EA5E9' }]}>
+                  {rawTelemetry || 'Sin trama recibida'}
+                </Text>
+              </View>
+            </View>
+          </AuraCard>
+        )}
+      </View>
+
+      {/* ── Footer ── */}
+      <View style={{ alignItems: 'center', marginTop: 8 }}>
         <Text style={[styles.versionText, { color: isDark ? '#475569' : '#94A3B8' }]}>
-          TPH Monitor IoT v2.5.0 · ESP32 BLE pH Engine
+          TPH Monitor · Sistema de Monitoreo de Agua
         </Text>
       </View>
 
@@ -914,12 +734,12 @@ export const SettingsView: React.FC = () => {
 
 const styles = StyleSheet.create({
   mainHeading: {
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   subHeading: {
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
   sectionHeaderRow: {
@@ -929,29 +749,35 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1.4,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
-  countBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+  headerActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
     borderWidth: 1,
+    gap: 5,
   },
-  countText: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  toggleAllBtn: {
-    fontSize: 11,
-    fontWeight: '600',
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   cardContent: {
-    padding: 16,
+    padding: 14,
   },
   modeSelectorRow: {
     flexDirection: 'row',
@@ -969,14 +795,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   modeButtonText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderColor: 'rgba(239,68,68,0.3)',
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderColor: 'rgba(239,68,68,0.25)',
     borderWidth: 1,
     borderRadius: 10,
     padding: 10,
@@ -993,192 +819,129 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     marginBottom: 10,
   },
-  disconnectMiniBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  deviceIconBox: {
+    width: 32,
+    height: 32,
     borderRadius: 8,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
-  },
-  disconnectMiniText: {
-    color: '#EF4444',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  bleActionBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 8,
+    marginRight: 10,
   },
-  bleActionBtnText: {
-    fontSize: 12,
+  deviceNameText: {
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.2,
   },
-  devicesListHeader: {
+  deviceMetaText: {
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  deviceListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginBottom: 6,
-  },
-  deviceItemName: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  deviceItemId: {
-    fontSize: 9,
-    fontFamily: 'monospace',
     marginTop: 1,
   },
-  connectDeviceBtn: {
+  disconnectButton: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: '#0EA5E9',
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.25)',
   },
-  connectDeviceBtnText: {
-    color: '#FFFFFF',
-    fontSize: 10,
+  disconnectButtonText: {
+    color: '#EF4444',
+    fontSize: 11,
     fontWeight: '700',
   },
-  scanHintText: {
-    fontSize: 10,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 14,
-  },
-  techMetricsGrid: {
+  liveDataBar: {
     flexDirection: 'row',
-    marginHorizontal: -4,
-    marginBottom: 12,
-  },
-  techMetricCard: {
-    flex: 1,
-    marginHorizontal: 4,
-    padding: 10,
-    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  techMetricLabel: {
+  liveDataItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  liveDataLabel: {
     fontSize: 8,
     fontWeight: '700',
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  techMetricValue: {
-    fontSize: 14,
+  liveDataValue: {
+    fontSize: 13,
     fontWeight: 'bold',
     fontFamily: 'monospace',
   },
-  techMetricSub: {
-    fontSize: 8,
-    marginTop: 2,
+  liveDataDivider: {
+    width: 1,
+    height: 18,
   },
-  classificationBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  classificationText: {
-    fontSize: 8,
-    fontWeight: '800',
-  },
-  consoleContainer: {
-    marginBottom: 12,
-  },
-  consoleHeader: {
+  primaryActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  consoleTitle: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#64748B',
-    letterSpacing: 0.8,
-  },
-  consoleStatusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#10B981',
-  },
-  consoleBox: {
-    backgroundColor: '#0A0D14',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 10,
-    padding: 10,
+    gap: 8,
   },
-  consoleText: {
-    color: '#38BDF8',
-    fontFamily: 'monospace',
+  primaryActionBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  devicesSectionTitle: {
     fontSize: 10,
-    fontWeight: '600',
-  },
-  hardwareStatusContainer: {
-    borderTopWidth: 1,
-    paddingTop: 10,
-  },
-  hardwareStatusTitle: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
     marginBottom: 6,
   },
-  sensorStatusRow: {
+  deviceRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 6,
   },
-  sensorStatusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sensorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  sensorStatusName: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  sensorStatusState: {
-    fontSize: 9,
+  deviceItemTitle: {
+    fontSize: 12,
     fontWeight: '700',
-    fontFamily: 'monospace',
+  },
+  deviceItemSub: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  connectBtnSmall: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  connectBtnSmallText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  hintText: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 15,
   },
   meterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
   },
-  iconWrap: {
+  meterIconBox: {
     width: 34,
     height: 34,
     borderRadius: 10,
@@ -1187,80 +950,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  meterTextCol: {
+  meterTextColumn: {
     flex: 1,
     marginRight: 10,
   },
-  meterTitle: {
+  meterTitleText: {
     fontSize: 13,
     fontWeight: '700',
-    marginRight: 6,
   },
-  activePill: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-    backgroundColor: 'rgba(16,185,129,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.3)',
-  },
-  activePillText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#10B981',
-  },
-  standbyPill: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
-    backgroundColor: 'rgba(100,116,139,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(100,116,139,0.25)',
-  },
-  standbyPillText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#94A3B8',
-  },
-  meterSubtitle: {
-    fontSize: 10,
+  meterSubtitleText: {
+    fontSize: 11,
     marginTop: 1,
   },
   thresholdsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: -4,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   thresholdCard: {
-    width: '50%',
+    width: '48%',
+    marginHorizontal: '1%',
     padding: 10,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     marginBottom: 8,
-    paddingHorizontal: 10,
   },
-  thresholdCardHeader: {
+  thresholdIconRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
+    gap: 5,
   },
-  thresholdMiniIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 6,
-  },
-  thresholdCardLabel: {
+  thresholdLabel: {
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.2,
     textTransform: 'uppercase',
   },
-  thresholdCardValue: {
+  thresholdValue: {
     fontSize: 12,
     fontWeight: 'bold',
     fontFamily: 'monospace',
@@ -1270,63 +998,45 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'System',
   },
-  configActionBtn: {
+  editThresholdsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
     borderWidth: 1,
     gap: 6,
   },
-  configActionText: {
+  editThresholdsBtnText: {
     color: '#0EA5E9',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
-  bleTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  bleSubtitle: {
-    fontSize: 9,
-    fontFamily: 'monospace',
-    marginTop: 1,
-  },
-  versionText: {
-    fontSize: 9,
-    fontFamily: 'monospace',
-    letterSpacing: 0.5,
-  },
-  espBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: 'rgba(14,165,233,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(14,165,233,0.4)',
-  },
-  espBadgeText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: '#0EA5E9',
-  },
-  quickTestHeader: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  quickTestBtn: {
-    flex: 1,
+  techToggleRow: {
+    alignItems: 'center',
     paddingVertical: 6,
-    paddingHorizontal: 8,
+  },
+  techToggleText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  rawTelemetryLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  rawTelemetryBox: {
     borderRadius: 8,
     borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 8,
   },
-  quickTestText: {
-    fontSize: 9,
-    fontWeight: '700',
+  rawTelemetryText: {
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  versionText: {
+    fontSize: 10,
+    letterSpacing: 0.2,
   },
 });

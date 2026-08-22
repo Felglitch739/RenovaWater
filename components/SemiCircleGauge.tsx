@@ -59,7 +59,7 @@ const STATUS_META = {
   },
 } as const;
 
-export const SemiCircleGauge: React.FC<SemiCircleGaugeProps> = ({
+export const SemiCircleGauge = React.memo<SemiCircleGaugeProps>(({
   title,
   value,
   unit,
@@ -264,7 +264,7 @@ export const SemiCircleGauge: React.FC<SemiCircleGaugeProps> = ({
       </View>
     </AuraCard>
   );
-};
+});
 
 const styles = StyleSheet.create({
   cardPadding: {

@@ -29,7 +29,7 @@ export interface TemperatureGaugeProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
+export const TemperatureGauge = React.memo<TemperatureGaugeProps>(({
   value = 24.5,
   min = 0,
   max = 50,
@@ -258,7 +258,7 @@ export const TemperatureGauge: React.FC<TemperatureGaugeProps> = ({
       </View>
     </AuraCard>
   );
-};
+});
 
 const styles = StyleSheet.create({
   cardContent: {

@@ -52,6 +52,8 @@ class Esp32BleService {
   private currentStatus: BleConnectionStatus = 'disconnected';
   private lastErrorMessage: string | null = null;
   private scanTimeoutId: any = null;
+  private notifyThrottleTimer: any = null;
+  private isNotifyPending: boolean = false;
 
   constructor() {
     this.initBleManager();
@@ -109,6 +111,9 @@ class Esp32BleService {
   }
 
   private setStatus(status: BleConnectionStatus, error?: string) {
+    if (this.currentStatus === status && this.lastErrorMessage === (error || null)) {
+      return;
+    }
     this.currentStatus = status;
     this.lastErrorMessage = error || null;
     this.statusListeners.forEach((l) => l(status, error));
@@ -122,6 +127,36 @@ class Esp32BleService {
       return (b.rssi ?? -999) - (a.rssi ?? -999);
     });
     this.deviceListeners.forEach((l) => l(list));
+  }
+
+  /**
+   * Notifica a los listeners usando un mecanismo de throttle (máx. una vez cada 500ms)
+   * para evitar desbordar el ciclo de renderizado de React / Zustand.
+   */
+  private scheduleNotifyDevices(immediate: boolean = false) {
+    if (immediate) {
+      if (this.notifyThrottleTimer) {
+        clearTimeout(this.notifyThrottleTimer);
+        this.notifyThrottleTimer = null;
+      }
+      this.isNotifyPending = false;
+      this.notifyDevices();
+      return;
+    }
+
+    if (this.notifyThrottleTimer) {
+      this.isNotifyPending = true;
+      return;
+    }
+
+    this.notifyDevices();
+    this.notifyThrottleTimer = setTimeout(() => {
+      this.notifyThrottleTimer = null;
+      if (this.isNotifyPending) {
+        this.isNotifyPending = false;
+        this.notifyDevices();
+      }
+    }, 500);
   }
 
   // ── Permisos en Android ──
@@ -178,7 +213,6 @@ class Esp32BleService {
       const state = await this.bleManager.state();
       console.log('[BLE] Estado actual del adaptador Bluetooth:', state);
       if (state !== 'PoweredOn') {
-        // Esperar a que pase a PoweredOn si está encendiéndose
         const isReady = await new Promise<boolean>((resolve) => {
           const sub = this.bleManager.onStateChange((newState: string) => {
             console.log('[BLE] Cambio de estado de adaptador:', newState);
@@ -202,9 +236,9 @@ class Esp32BleService {
       console.warn('[BLE] Error consultando estado de Bluetooth:', e);
     }
 
-    // Limpiar lista anterior
+    // Limpiar lista anterior y temporizadores pendientes
     this.discoveredDevicesMap.clear();
-    this.notifyDevices();
+    this.scheduleNotifyDevices(true);
     this.setStatus('scanning');
 
     if (this.scanTimeoutId) clearTimeout(this.scanTimeoutId);
@@ -214,7 +248,7 @@ class Esp32BleService {
     try {
       this.bleManager.startDeviceScan(
         null, // Escanear todos los servicios
-        { allowDuplicates: true },
+        { allowDuplicates: false },
         (error: any, device: any) => {
           if (error) {
             console.warn('[BLE] Error en startDeviceScan:', error);
@@ -233,7 +267,9 @@ class Esp32BleService {
               rssi: device.rssi ?? existing?.rssi ?? null,
               isConnectable: device.isConnectable ?? true,
             });
-            this.notifyDevices();
+
+            // Notificación throttled para evitar saturar el hilo JS y React
+            this.scheduleNotifyDevices(false);
           }
         }
       );
@@ -253,11 +289,16 @@ class Esp32BleService {
       clearTimeout(this.scanTimeoutId);
       this.scanTimeoutId = null;
     }
+    if (this.notifyThrottleTimer) {
+      clearTimeout(this.notifyThrottleTimer);
+      this.notifyThrottleTimer = null;
+      this.isNotifyPending = false;
+    }
     if (this.isAvailable() && this.bleManager) {
       try {
         this.bleManager.stopDeviceScan();
       } catch (e) {
-        // Ignorar
+        // Ignorar si no estaba escaneando
       }
     }
     if (this.currentStatus === 'scanning') {
@@ -273,23 +314,25 @@ class Esp32BleService {
       return false;
     }
 
-    // 1. Evitar múltiples conexiones concurrentes
+    // 1. Detener escaneo INMEDIATAMENTE para liberar el hilo de radio/CPU antes de conectar
+    this.stopScan();
+
+    // 2. Evitar múltiples conexiones concurrentes
     if (this.currentStatus === 'connecting') {
       console.log('[BLE] Intento de conexión ya en curso. Ignorando solicitud concurrente.');
       return false;
     }
 
-    // 2. Si ya está conectado al dispositivo solicitado, no reconectar
+    // 3. Si ya está conectado al dispositivo solicitado, no reconectar
     if (this.connectedDevice && this.connectedDevice.id === deviceId && this.currentStatus === 'connected') {
       console.log('[BLE] El dispositivo ya está conectado.');
       return true;
     }
 
-    this.stopScan();
     this.setStatus('connecting');
 
     try {
-      // 1. Conectar con el dispositivo
+      // Conectar con el dispositivo
       const device = await this.bleManager.connectToDevice(deviceId, {
         autoConnect: false,
         timeout: 12000,
@@ -297,43 +340,95 @@ class Esp32BleService {
 
       this.connectedDevice = device;
 
-      // 2. Monitorear desconexión inesperada
+      // Monitorear desconexión inesperada
       device.onDisconnected((error: any, disconnectedDev: any) => {
         console.log('[BLE] Dispositivo desconectado:', disconnectedDev?.id, error);
         this.cleanConnection();
         this.setStatus('disconnected', error ? 'Conexión interrumpida' : undefined);
       });
 
-      // 3. Negociar MTU en Android (512 bytes para paquetes completos)
+      // Negociar MTU en Android (512 bytes para paquetes completos)
       if (Platform.OS === 'android') {
         try {
           await device.requestMTU(512);
         } catch {
-          // Si falla MTU, continuar con MTU por defecto
+          // Si falla MTU, continuar con MTU estándar
         }
       }
 
-      // 4. Descubrir servicios y características
+      // Descubrir servicios y características
       await device.discoverAllServicesAndCharacteristics();
       const services = await device.services();
 
-      let subscribed = false;
+      console.log(`[BLE] Servicios descubiertos (${services.length}):`, services.map((s: any) => s.uuid));
 
-      // 5. Buscar característica con NOTIFY o INDICATE
+      let targetChar: any = null;
+
+      // PASO 1: Búsqueda exacta por UUID de ESP32 o Nordic UART
       for (const service of services) {
         const characteristics = await service.characteristics();
         for (const char of characteristics) {
-          if (char.isNotifiable || char.isIndicatable) {
-            this.subscribeToCharacteristic(char);
-            subscribed = true;
+          const sUuid = service.uuid.toLowerCase();
+          const cUuid = char.uuid.toLowerCase();
+          
+          console.log(`[BLE] -> Char: ${cUuid} en Serv: ${sUuid} | Notifiable: ${char.isNotifiable} | Indicatable: ${char.isIndicatable} | Readable: ${char.isReadable}`);
+
+          if (
+            cUuid === ESP32_CHARACTERISTIC_UUID ||
+            cUuid === NORDIC_UART_TX_CHAR_UUID ||
+            sUuid === ESP32_SERVICE_UUID
+          ) {
+            targetChar = char;
+            console.log(`[BLE] ¡Característica objetivo del ESP32 encontrada!: ${cUuid}`);
             break;
           }
         }
-        if (subscribed) break;
+        if (targetChar) break;
       }
 
-      this.setStatus('connected');
-      return true;
+      // PASO 2: Si no hubo coincidencia exacta, buscar cualquier característica notifiable que NO sea de sistema
+      if (!targetChar) {
+        for (const service of services) {
+          const sUuid = service.uuid.toLowerCase();
+          // Ignorar servicios estándar del sistema Bluetooth (Generic Access 1800, Generic Attribute 1801, Device Info 180a)
+          if (sUuid.includes('1800') || sUuid.includes('1801') || sUuid.includes('180a')) {
+            continue;
+          }
+
+          const characteristics = await service.characteristics();
+          for (const char of characteristics) {
+            if (char.isNotifiable || char.isIndicatable) {
+              targetChar = char;
+              console.log(`[BLE] Característica notifiable fallback seleccionada: ${char.uuid}`);
+              break;
+            }
+          }
+          if (targetChar) break;
+        }
+      }
+
+      if (targetChar) {
+        // Si la característica soporta lectura, leer valor inicial
+        if (targetChar.isReadable) {
+          try {
+            const initialRead = await targetChar.read();
+            if (initialRead && initialRead.value) {
+              console.log('[BLE] Lectura inicial:', initialRead.value);
+              this.handleIncomingBase64(initialRead.value);
+            }
+          } catch (e) {
+            console.log('[BLE] Lectura inicial no disponible, continuando con monitor.');
+          }
+        }
+
+        this.subscribeToCharacteristic(targetChar);
+        this.setStatus('connected');
+        return true;
+      } else {
+        console.warn('[BLE] No se encontró ninguna característica de telemetría notifiable.');
+        this.setStatus('connected');
+        return true;
+      }
     } catch (err: any) {
       console.error('[BLE] Error conectando al dispositivo:', err);
       this.cleanConnection();
@@ -344,19 +439,27 @@ class Esp32BleService {
 
   private subscribeToCharacteristic(char: any) {
     if (this.characteristicSubscription) {
-      this.characteristicSubscription.remove();
+      try {
+        this.characteristicSubscription.remove();
+      } catch (e) {}
+      this.characteristicSubscription = null;
     }
 
-    this.characteristicSubscription = char.monitor((error: any, characteristic: any) => {
-      if (error) {
-        console.warn('[BLE] Error en monitor de característica:', error);
-        return;
-      }
+    try {
+      console.log(`[BLE] Suscribiéndose a notificaciones de: ${char.uuid}`);
+      this.characteristicSubscription = char.monitor((error: any, characteristic: any) => {
+        if (error) {
+          console.warn('[BLE] Error en monitor de característica:', error);
+          return;
+        }
 
-      if (characteristic && characteristic.value) {
-        this.handleIncomingBase64(characteristic.value);
-      }
-    });
+        if (characteristic && characteristic.value) {
+          this.handleIncomingBase64(characteristic.value);
+        }
+      });
+    } catch (err) {
+      console.warn('[BLE] Error iniciando monitor de característica:', err);
+    }
   }
 
   /**
@@ -365,12 +468,12 @@ class Esp32BleService {
   private handleIncomingBase64(base64Str: string) {
     try {
       const decodedText = base64Decode(base64Str);
+      console.log('[BLE Datos Recibidos]:', decodedText);
       this.buffer += decodedText;
 
       // Procesar líneas delimitadas por \n o \r
       if (this.buffer.includes('\n') || this.buffer.includes('\r')) {
         const lines = this.buffer.split(/[\r\n]+/);
-        // Guardar el último fragmento incompleto si no termina en salto de línea
         const lastIncomplete = this.buffer.endsWith('\n') || this.buffer.endsWith('\r') ? '' : lines.pop() || '';
         this.buffer = lastIncomplete;
 
@@ -380,11 +483,20 @@ class Esp32BleService {
             this.processIncomingLine(cleanLine);
           }
         }
-      } else if (this.buffer.includes('ADC:') && this.buffer.includes('pH:')) {
-        // En caso de que no haya saltos de línea pero tengamos la cadena completa
-        const trimmed = this.buffer.trim();
-        this.processIncomingLine(trimmed);
-        this.buffer = '';
+      }
+
+      // Extraer todas las lecturas completas que coincidan con la telemetría del ESP32
+      const standardRegex = /ADC:\s*([\d.]+)\s*\|\s*Voltaje:\s*([\d.]+)\s*V?\s*\|\s*pH:\s*([\d.]+)/i;
+      let match = this.buffer.match(standardRegex);
+      while (match) {
+        this.processIncomingLine(match[0].trim());
+        this.buffer = this.buffer.substring(match.index! + match[0].length);
+        match = this.buffer.match(standardRegex);
+      }
+
+      // Prevenir desborde del buffer si hay datos no coincidentes
+      if (this.buffer.length > 512) {
+        this.buffer = this.buffer.substring(this.buffer.length - 128);
       }
     } catch (err) {
       console.warn('[BLE] Error decodificando paquete base64:', err);
