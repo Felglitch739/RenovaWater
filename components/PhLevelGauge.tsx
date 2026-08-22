@@ -30,12 +30,12 @@ export interface PhLevelGaugeProps {
 }
 
 export const PhLevelGauge: React.FC<PhLevelGaugeProps> = ({
-  value = 7.35,
+  value = 7.00,
   min = 0,
   max = 14,
   title = 'NIVEL DE pH',
   idealMin = 6.5,
-  idealMax = 8.5,
+  idealMax = 7.5,
   width = 160,
   isDark = true,
   style,

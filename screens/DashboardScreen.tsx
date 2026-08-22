@@ -246,6 +246,8 @@ export const DashboardScreen: React.FC = () => {
     historyData,
     totalAlerts,
     theme,
+    connectionMode,
+    connectedDeviceName,
     setTheme,
     connect,
     disconnect,
@@ -264,7 +266,7 @@ export const DashboardScreen: React.FC = () => {
   const isDark = theme === 'dark';
   const T = isDark ? DARK_THEME : LIGHT_THEME;
 
-  // Iniciar simulación al montar, limpiar al desmontar
+  // Iniciar simulación o escaneo al montar, limpiar al desmontar
   useEffect(() => {
     connect();
     return () => disconnect();
@@ -380,7 +382,9 @@ export const DashboardScreen: React.FC = () => {
                   borderWidth: 1,
                   borderColor: 'rgba(14,165,233,0.25)',
                 }}>
-                  <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#0EA5E9', letterSpacing: 0.5 }}>IoT</Text>
+                  <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#0EA5E9', letterSpacing: 0.5 }}>
+                    {connectionMode === 'bluetooth' ? 'ESP32 BLE' : 'SIMULACIÓN'}
+                  </Text>
                 </View>
               </View>
 
@@ -392,7 +396,11 @@ export const DashboardScreen: React.FC = () => {
                   shadowOpacity: 0.8, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
                 }} />
                 <Text style={{ color: T.textSecondary, fontSize: 10, fontWeight: '500' }}>
-                  {isConnected ? 'Telemetría H2O activa' : 'Monitoreo de calidad de agua'}
+                  {isConnected
+                    ? (connectionMode === 'bluetooth'
+                        ? (connectedDeviceName ? `Enlace BLE: ${connectedDeviceName}` : 'Telemetría ESP32 activa')
+                        : 'Simulación de pH activa')
+                    : (isScanning ? 'Escaneando dispositivos...' : 'Monitoreo en espera')}
                 </Text>
               </View>
             </View>
@@ -464,7 +472,9 @@ export const DashboardScreen: React.FC = () => {
                       marginRight: 5,
                       shadowColor: '#10B981', shadowOpacity: 0.9, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
                     }} />
-                    <Text style={{ color: '#0EA5E9', fontSize: 9, fontWeight: '700', letterSpacing: 0.8 }}>SONDA ACTIVA</Text>
+                    <Text style={{ color: '#0EA5E9', fontSize: 9, fontWeight: '700', letterSpacing: 0.8 }}>
+                      SONDA pH-4502C ACTIVA
+                    </Text>
                   </View>
                 )}
               </View>

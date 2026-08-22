@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { bleService, type BleConnectionStatus, type BleDiscoveredDevice } from '../services/bleService';
+import { parseEsp32Telemetry, classifyPh, type PhClassification, type TelemetryReading } from '../services/telemetryParser';
 
 // ─────────────────────────────────────────────
 // Tipos públicos exportados
@@ -7,6 +9,7 @@ import { create } from 'zustand';
 /** Estado cualitativo de cada métrica */
 export type MetricStatus = 'ok' | 'warning' | 'danger';
 export type AppTheme = 'dark' | 'light';
+export type ConnectionMode = 'bluetooth' | 'simulation';
 
 /** Un registro histórico de una muestra del sensor */
 export interface HistoryRecord {
@@ -14,6 +17,8 @@ export interface HistoryRecord {
   ph: number;
   temperature: number;
   turbidity: number;
+  adc?: number;
+  voltage?: number;
 }
 
 /** Un evento de alerta individual registrado en el log */
@@ -24,6 +29,7 @@ export interface AlertEvent {
   value: number;
   unit: string;
   status: MetricStatus; // 'warning' | 'danger'
+  message?: string;
 }
 
 /** Rango configurable para una sola métrica */
@@ -34,19 +40,19 @@ export interface MetricRange {
 
 /** Objeto completo de rangos de alerta configurables por el usuario */
 export interface AlertRanges {
-  ph: Required<MetricRange>;          // pH siempre tiene min y max
-  temperature: Required<MetricRange>; // Temperatura (°C) tiene min y max
-  turbidity: Pick<MetricRange, 'max'>; // Turbidez solo tiene umbral máximo
-  conductivity: Required<MetricRange>; // Conductividad (µS/cm) tiene min y max
+  ph: Required<MetricRange>;          // pH siempre tiene min y max (óptimo 6.5 a 7.5)
+  temperature: Required<MetricRange>; // Temperatura (°C)
+  turbidity: Pick<MetricRange, 'max'>; // Turbidez (NTU)
+  conductivity: Required<MetricRange>; // Conductividad (µS/cm)
 }
 
 /** Configuración de visibilidad de medidores en el dashboard */
 export interface VisibleMeters {
   wqi: boolean;           // Índice Global WQI
-  ph: boolean;            // Medidor de pH
-  temperature: boolean;   // Medidor de Temperatura
-  conductivity: boolean;  // Gráfico de Conductividad Eléctrica
-  turbidity: boolean;     // Medidor de Turbidez
+  ph: boolean;            // Medidor de pH (Hardware Activo pH-4502C)
+  temperature: boolean;   // Medidor de Temperatura (Standby)
+  conductivity: boolean;  // Gráfico de Conductividad Eléctrica (Standby)
+  turbidity: boolean;     // Medidor de Turbidez (Standby)
 }
 
 export const DEFAULT_VISIBLE_METERS: VisibleMeters = {
@@ -62,16 +68,33 @@ export const DEFAULT_VISIBLE_METERS: VisibleMeters = {
 // ─────────────────────────────────────────────
 
 interface SensorState {
-  // --- Lecturas actuales del sensor ---
+  // --- Lecturas actuales del sensor de pH (Hardware Activo: pH-4502C) ---
   ph: number;
+  phClassification: PhClassification;
+  
+  // --- Datos técnicos y de depuración del ESP32 ---
+  adc: number | null;        // Lectura cruda ADC 12-bit (0 - 4095)
+  voltage: number | null;    // Voltaje analógico (0 - 3.3V)
+  rawTelemetry: string | null; // Cadena cruda entrante
+
+  // --- Sensores pendientes de hardware (Standby) ---
   temperature: number;
   turbidity: number;
+  isHardwareOnlyPh: boolean; // Indica que solo el sensor de pH está transmitiendo en hardware
 
   // --- Metadatos de conexión ---
+  connectionMode: ConnectionMode;
   lastUpdated: Date | null;
   isConnected: boolean;
   isScanning: boolean;
   intervalId: ReturnType<typeof setInterval> | null;
+
+  // --- Estado Bluetooth BLE ---
+  bleStatus: BleConnectionStatus;
+  bleDevices: BleDiscoveredDevice[];
+  connectedDeviceId: string | null;
+  connectedDeviceName: string | null;
+  bleError: string | null;
 
   // --- Rangos de alerta configurables ---
   alertRanges: AlertRanges;
@@ -91,15 +114,23 @@ interface SensorState {
   // --- Contador acumulado de alertas detectadas ---
   totalAlerts: number;
 
-  // --- Timestamp de inicio de sesión (para calcular tiempo operativo) ---
+  // --- Timestamp de inicio de sesión ---
   sessionStart: Date | null;
   sessionStartTime: number | null;
 
   // --- Configuración de App ---
   theme: AppTheme;
   setTheme: (theme: AppTheme) => void;
+  setConnectionMode: (mode: ConnectionMode) => void;
 
-  // --- Acciones ---
+  // --- Acciones de Telemetría y BLE ---
+  processTelemetryString: (telemetryString: string) => void;
+  startBleScan: () => Promise<void>;
+  stopBleScan: () => void;
+  connectBleDevice: (deviceId: string) => Promise<boolean>;
+  disconnectBleDevice: () => Promise<void>;
+
+  // --- Acciones Generales ---
   connect: () => void;
   disconnect: () => void;
   updateAlertRanges: (newRanges: Partial<AlertRanges>) => void;
@@ -107,11 +138,11 @@ interface SensorState {
 }
 
 // ─────────────────────────────────────────────
-// Rangos industriales por defecto
+// Rangos del proyecto por defecto
 // ─────────────────────────────────────────────
 
 const DEFAULT_ALERT_RANGES: AlertRanges = {
-  ph:          { min: 6.5,  max: 8.5  },
+  ph:          { min: 6.5,  max: 7.5  }, // Regla: 6.5 - 7.5 Neutro, < 6.5 Ácido, > 7.5 Alcalino
   temperature: { min: 20.0, max: 35.0 },
   turbidity:   { max: 5.0 },
   conductivity: { min: 250, max: 750 },
@@ -126,9 +157,9 @@ const MAX_HISTORY_LENGTH = 24;
 
 /**
  * Evalúa el pH contra los rangos configurados.
- * - ok      → dentro del rango [min, max]
- * - warning → dentro de una banda de tolerancia de ±0.5 fuera del rango
- * - danger  → fuera de la banda de tolerancia
+ * - ok      → dentro del rango [min, max] (6.5 - 7.5 Neutro)
+ * - warning → tolerancia cercana (ej. 6.0 - 6.49 o 7.51 - 8.0)
+ * - danger  → fuertemente ácido (< 6.0) o fuertemente alcalino (> 8.0)
  */
 export const evaluatePh = (
   val: number,
@@ -140,12 +171,6 @@ export const evaluatePh = (
   return 'danger';
 };
 
-/**
- * Evalúa la temperatura contra los rangos configurados:
- * - ok (verde)      → Rango [min, max] (por defecto 20.0°C - 35.0°C)
- * - warning (ámbar) → Fuera de [min, max] pero dentro de tolerancia
- * - danger (rojo)   → < (min - 10) o > (max + 10)
- */
 export const evaluateTemperature = (
   val: number,
   range: Required<MetricRange> = DEFAULT_ALERT_RANGES.temperature,
@@ -155,12 +180,6 @@ export const evaluateTemperature = (
   return 'ok';
 };
 
-/**
- * Evalúa la turbidez contra el umbral máximo configurado.
- * - ok      → val ≤ max
- * - warning → val ≤ max * 4 (hasta 4× el límite)
- * - danger  → por encima de 4× el límite
- */
 export const evaluateTurbidity = (
   val: number,
   range: Pick<MetricRange, 'max'> = DEFAULT_ALERT_RANGES.turbidity,
@@ -170,12 +189,6 @@ export const evaluateTurbidity = (
   return 'danger';
 };
 
-/**
- * Evalúa la conductividad eléctrica (µS/cm).
- * - ok      → val entre [min, max]
- * - warning → fuera de [min, max]
- * - danger  → fuera de tolerancia extrema
- */
 export const evaluateConductivity = (
   val: number,
   range: Required<MetricRange> = DEFAULT_ALERT_RANGES.conductivity,
@@ -184,26 +197,6 @@ export const evaluateConductivity = (
   if (val < range.min || val > range.max) return 'warning';
   return 'ok';
 };
-
-// ─────────────────────────────────────────────
-// Generadores de datos mock realistas
-// ─────────────────────────────────────────────
-
-/** Genera un pH con rango amplio (5.8 – 9.6) */
-const generatePh = (): number =>
-  parseFloat((5.8 + Math.random() * 3.8).toFixed(2));
-
-/** Genera temperatura en rango amplio (14.0°C – 40.0°C) para disparar alertas periódicas */
-const generateTemperature = (): number =>
-  parseFloat((14.0 + Math.random() * 26.0).toFixed(1));
-
-/** Genera turbidez (0 – 42 NTU) */
-const generateTurbidity = (): number =>
-  parseFloat((Math.random() * 42).toFixed(1));
-
-/** Genera conductividad en µS/cm (180 – 880 µS/cm) */
-const generateConductivity = (): number =>
-  Math.round(180 + Math.random() * 700);
 
 /** Formatea un Date como HH:MM:SS para el historial */
 const formatTime = (date: Date): string =>
@@ -219,227 +212,305 @@ const formatTime = (date: Date): string =>
 // ─────────────────────────────────────────────
 
 export const useSensorStore = create<SensorState>((set, get) => ({
-  // ── Valores iniciales del sensor ──
-  ph: 7.2,
-  temperature: 23.4,
-  turbidity: 1.2,
-  lastUpdated: null,
-  isConnected: false,
-  isScanning: false,
-  intervalId: null,
+  // ── Valores iniciales del sensor (pH-4502C) ──
+  ph: 7.00,
+  phClassification: 'NEUTRO',
+  adc: 2048.00,
+  voltage: 1.65,
+  rawTelemetry: 'ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00',
 
-  // ── Configuración inicial ──
-  alertRanges: DEFAULT_ALERT_RANGES,
-  visibleMeters: DEFAULT_VISIBLE_METERS,
-  historyData: [],
-  alertLog: [],
-  totalAlerts: 0,
-  sessionStart: null,
-  sessionStartTime: null,
-  theme: 'dark',
+    // ── Sensores en Standby (sin hardware conectado actualmente) ──
+    temperature: 24.0,
+    turbidity: 0.8,
+    isHardwareOnlyPh: true,
 
-  setTheme: (theme: AppTheme) => set({ theme }),
+    // ── Metadatos de conexión ──
+    connectionMode: 'bluetooth',
+    lastUpdated: null,
+    isConnected: false,
+    isScanning: false,
+    intervalId: null,
 
-  toggleMeter: (meter: keyof VisibleMeters) =>
-    set((state) => ({
-      visibleMeters: {
-        ...state.visibleMeters,
-        [meter]: !state.visibleMeters[meter],
-      },
-    })),
+    // ── Estado Bluetooth BLE ──
+    bleStatus: 'disconnected',
+    bleDevices: [],
+    connectedDeviceId: null,
+    connectedDeviceName: null,
+    bleError: null,
 
-  setVisibleMeters: (newMeters: Partial<VisibleMeters>) =>
-    set((state) => ({
-      visibleMeters: {
-        ...state.visibleMeters,
-        ...newMeters,
-      },
-    })),
+    // ── Configuración inicial ──
+    alertRanges: DEFAULT_ALERT_RANGES,
+    visibleMeters: DEFAULT_VISIBLE_METERS,
+    historyData: [],
+    alertLog: [],
+    totalAlerts: 0,
+    sessionStart: null,
+    sessionStartTime: null,
+    theme: 'dark',
 
-  resetVisibleMeters: () => set({ visibleMeters: DEFAULT_VISIBLE_METERS }),
+    setTheme: (theme: AppTheme) => set({ theme }),
 
-  // ──────────────────────────────────────────
-  // connect()
-  // ──────────────────────────────────────────
-  connect: () => {
-    const { intervalId } = get();
+    setConnectionMode: (mode: ConnectionMode) => {
+      const current = get();
+      if (current.isConnected) {
+        current.disconnect();
+      }
+      set({ connectionMode: mode });
+    },
 
-    if (intervalId) {
-      clearInterval(intervalId);
-      clearTimeout(intervalId);
-    }
+    toggleMeter: (meter: keyof VisibleMeters) =>
+      set((state) => ({
+        visibleMeters: {
+          ...state.visibleMeters,
+          [meter]: !state.visibleMeters[meter],
+        },
+      })),
 
-    set({ isScanning: true, isConnected: false });
+    setVisibleMeters: (newMeters: Partial<VisibleMeters>) =>
+      set((state) => ({
+        visibleMeters: {
+          ...state.visibleMeters,
+          ...newMeters,
+        },
+      })),
 
-    // Handshake de 150ms
-    const handshakeTimer = setTimeout(() => {
-      const startTime = Date.now();
-      const now = new Date(startTime);
-      const timeStr = formatTime(now);
+    resetVisibleMeters: () => set({ visibleMeters: DEFAULT_VISIBLE_METERS }),
 
-      const initialPh = generatePh();
-      const initialTemp = generateTemperature();
-      const initialTurbidity = generateTurbidity();
+    // ──────────────────────────────────────────
+    // processTelemetryString(rawString)
+    // Procesa cadenas reales del ESP32:
+    // "ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00"
+    // ──────────────────────────────────────────
+    processTelemetryString: (telemetryString: string) => {
+      const reading = parseEsp32Telemetry(telemetryString);
+      if (!reading) return;
 
-      const initialRecord: HistoryRecord = {
-        time: timeStr,
-        ph: initialPh,
-        temperature: initialTemp,
-        turbidity: initialTurbidity,
+      const now = new Date();
+      const timeFormatted = formatTime(now);
+      const { alertRanges, visibleMeters, historyData, alertLog, totalAlerts, sessionStartTime } = get();
+
+      const newPh = reading.ph;
+      const newClassification = reading.classification;
+      const phStatus = evaluatePh(newPh, alertRanges.ph);
+
+      // Alertas solo para pH porque es el único con hardware conectado
+      const newAlerts: AlertEvent[] = [];
+      if (phStatus !== 'ok' && visibleMeters.ph) {
+        const msg = newClassification === 'ÁCIDO' 
+          ? `pH Ácido detectado (${newPh.toFixed(2)} pH)` 
+          : `pH Alcalino detectado (${newPh.toFixed(2)} pH)`;
+
+        newAlerts.push({
+          id: `${timeFormatted}-ph-${Math.random().toString(36).slice(2, 6)}`,
+          time: timeFormatted,
+          parameter: 'pH',
+          value: newPh,
+          unit: 'pH',
+          status: phStatus,
+          message: msg,
+        });
+      }
+
+      // Registro histórico con el pH real
+      const newRecord: HistoryRecord = {
+        time: timeFormatted,
+        ph: newPh,
+        temperature: get().temperature,
+        turbidity: get().turbidity,
+        adc: reading.adc,
+        voltage: reading.voltage,
       };
 
-      const freshState = get();
+      const updatedHistory: HistoryRecord[] = [
+        ...historyData.slice(-(MAX_HISTORY_LENGTH - 1)),
+        newRecord,
+      ];
+
+      const updatedAlertLog: AlertEvent[] = [
+        ...newAlerts,
+        ...alertLog,
+      ].slice(0, 50);
 
       set({
-        ph: initialPh,
-        temperature: initialTemp,
-        turbidity: initialTurbidity,
+        ph: newPh,
+        phClassification: newClassification,
+        adc: reading.adc,
+        voltage: reading.voltage,
+        rawTelemetry: reading.raw,
         lastUpdated: now,
-        sessionStart: now,
-        sessionStartTime: startTime,
         isConnected: true,
-        isScanning: false,
-        historyData: freshState.historyData.length > 0 ? freshState.historyData : [initialRecord],
+        sessionStart: get().sessionStart || now,
+        sessionStartTime: sessionStartTime || Date.now(),
+        historyData: updatedHistory,
+        alertLog: updatedAlertLog,
+        totalAlerts: totalAlerts + newAlerts.length,
       });
+    },
 
-      const id = setInterval(() => {
-        const timeNow = new Date();
-        const { alertRanges, visibleMeters, historyData, alertLog, totalAlerts } = get();
-        const timeFormatted = formatTime(timeNow);
+    // ──────────────────────────────────────────
+    // Acciones Bluetooth BLE
+    // ──────────────────────────────────────────
+    startBleScan: async () => {
+      set({ isScanning: true, bleError: null });
+      await bleService.startScan(12000);
+    },
 
-        // 1. Generar nuevos valores del sensor
-        const newPh = generatePh();
-        const newTemp = generateTemperature();
-        const newTurbidity = generateTurbidity();
-        const newConductivity = generateConductivity();
+    stopBleScan: () => {
+      bleService.stopScan();
+      set({ isScanning: false });
+    },
 
-        // 2. Evaluar estado de cada parámetro
-        const phStatus = evaluatePh(newPh, alertRanges.ph);
-        const tempStatus = evaluateTemperature(newTemp, alertRanges.temperature);
-        const turbidityStatus = evaluateTurbidity(newTurbidity, alertRanges.turbidity);
-        const conductivityStatus = evaluateConductivity(newConductivity, alertRanges.conductivity);
-
-        // 3. Construir eventos de alerta si están fuera de rango Y si el medidor está activo en Ajustes
-        const newAlerts: AlertEvent[] = [];
-        if (phStatus !== 'ok' && visibleMeters.ph) {
-          newAlerts.push({
-            id: `${timeFormatted}-ph-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeFormatted,
-            parameter: 'pH',
-            value: newPh,
-            unit: '',
-            status: phStatus,
-          });
-        }
-        if (tempStatus !== 'ok' && visibleMeters.temperature) {
-          newAlerts.push({
-            id: `${timeFormatted}-temp-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeFormatted,
-            parameter: 'Temperatura',
-            value: newTemp,
-            unit: '°C',
-            status: tempStatus,
-          });
-        }
-        if (turbidityStatus !== 'ok' && visibleMeters.turbidity) {
-          newAlerts.push({
-            id: `${timeFormatted}-tur-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeFormatted,
-            parameter: 'Turbidez',
-            value: newTurbidity,
-            unit: 'NTU',
-            status: turbidityStatus,
-          });
-        }
-        if (conductivityStatus !== 'ok' && visibleMeters.conductivity) {
-          newAlerts.push({
-            id: `${timeFormatted}-cond-${Math.random().toString(36).slice(2, 6)}`,
-            time: timeFormatted,
-            parameter: 'Conductividad',
-            value: newConductivity,
-            unit: 'µS/cm',
-            status: conductivityStatus,
-          });
-        }
-
-        // 4. Construir nuevo registro histórico
-        const newRecord: HistoryRecord = {
-          time: timeFormatted,
-          ph: newPh,
-          temperature: newTemp,
-          turbidity: newTurbidity,
-        };
-
-        // 5. Agregar al historial y al log
-        const updatedHistory: HistoryRecord[] = [
-          ...historyData.slice(-(MAX_HISTORY_LENGTH - 1)),
-          newRecord,
-        ];
-        const updatedAlertLog: AlertEvent[] = [
-          ...newAlerts,
-          ...alertLog,
-        ].slice(0, 50);
-
-        // 6. Actualizar store
+    connectBleDevice: async (deviceId: string) => {
+      set({ isScanning: false, bleError: null });
+      const success = await bleService.connectToDevice(deviceId);
+      if (success) {
+        const dev = bleService.getConnectedDevice();
         set({
-          ph: newPh,
-          temperature: newTemp,
-          turbidity: newTurbidity,
-          lastUpdated: timeNow,
+          connectedDeviceId: deviceId,
+          connectedDeviceName: dev?.name || 'ESP32 pH Sonda',
+          isConnected: true,
+          connectionMode: 'bluetooth',
+        });
+      }
+      return success;
+    },
+
+    disconnectBleDevice: async () => {
+      await bleService.disconnect();
+      set({
+        connectedDeviceId: null,
+        connectedDeviceName: null,
+        isConnected: false,
+      });
+    },
+
+    // ──────────────────────────────────────────
+    // connect() — Inicia según modo activo
+    // ──────────────────────────────────────────
+    connect: () => {
+      const { connectionMode, intervalId } = get();
+
+      if (intervalId) {
+        clearInterval(intervalId);
+        clearTimeout(intervalId);
+      }
+
+      if (connectionMode === 'bluetooth') {
+        // En modo BLE, iniciar escaneo de dispositivos
+        get().startBleScan();
+        return;
+      }
+
+      // --- MODO SIMULACIÓN (Para pruebas de UI de pH) ---
+      set({ isScanning: true, isConnected: false });
+
+      const handshakeTimer = setTimeout(() => {
+        const startTime = Date.now();
+        const now = new Date(startTime);
+        const timeStr = formatTime(now);
+
+        // Generar un pH de prueba inicial
+        const initialPh = parseFloat((6.2 + Math.random() * 2.0).toFixed(2));
+        const initialVolt = parseFloat((initialPh * 0.23 + 0.1).toFixed(2));
+        const initialAdc = Math.round(initialVolt * 1240);
+        const initialSimString = `ADC: ${initialAdc}.00 | Voltaje: ${initialVolt.toFixed(2)} V | pH: ${initialPh.toFixed(2)}`;
+
+        get().processTelemetryString(initialSimString);
+
+        set({
+          lastUpdated: now,
+          sessionStart: now,
+          sessionStartTime: startTime,
           isConnected: true,
           isScanning: false,
-          historyData: updatedHistory,
-          alertLog: updatedAlertLog,
-          totalAlerts: totalAlerts + newAlerts.length,
         });
-      }, 2000);
 
-      set({ intervalId: id });
-    }, 150);
+        // Intervalo de simulación cada 2.5 segundos
+        const id = setInterval(() => {
+          // pH fluctuando naturalmente para probar Ácido / Neutro / Alcalino
+          const simPh = parseFloat((5.8 + Math.random() * 2.6).toFixed(2));
+          const simVolt = parseFloat((simPh * 0.23 + 0.1).toFixed(2));
+          const simAdc = Math.round(simVolt * 1240);
+          const simString = `ADC: ${simAdc}.00 | Voltaje: ${simVolt.toFixed(2)} V | pH: ${simPh.toFixed(2)}`;
 
-    set({ intervalId: handshakeTimer as unknown as ReturnType<typeof setInterval> });
-  },
+          get().processTelemetryString(simString);
+        }, 2500);
 
-  // ──────────────────────────────────────────
-  // disconnect()
-  // ──────────────────────────────────────────
-  disconnect: () => {
-    const { intervalId } = get();
-    if (intervalId) {
-      clearInterval(intervalId);
-      clearTimeout(intervalId);
-    }
+        set({ intervalId: id });
+      }, 200);
 
-    set({
-      isConnected: false,
-      isScanning: false,
-      intervalId: null,
-      lastUpdated: null,
-      sessionStart: null,
-      sessionStartTime: null,
-      ph: 7.2,
-      temperature: 23.4,
-      turbidity: 1.2,
-    });
-  },
+      set({ intervalId: handshakeTimer as unknown as ReturnType<typeof setInterval> });
+    },
 
-  // ──────────────────────────────────────────
-  // updateAlertRanges(newRanges)
-  // ──────────────────────────────────────────
-  updateAlertRanges: (newRanges: Partial<AlertRanges>) => {
-    const current = get();
-    set({
-      alertRanges: {
-        ph: { ...current.alertRanges.ph, ...newRanges.ph },
-        temperature: { ...current.alertRanges.temperature, ...newRanges.temperature },
-        turbidity: { ...current.alertRanges.turbidity, ...newRanges.turbidity },
-        conductivity: { ...current.alertRanges.conductivity, ...newRanges.conductivity },
-      },
-    });
-  },
+    // ──────────────────────────────────────────
+    // disconnect()
+    // ──────────────────────────────────────────
+    disconnect: () => {
+      const { intervalId, connectionMode } = get();
+      if (intervalId) {
+        clearInterval(intervalId);
+        clearTimeout(intervalId);
+      }
 
-  // ──────────────────────────────────────────
-  // clearAlertLog()
-  // ──────────────────────────────────────────
-  clearAlertLog: () => set({ alertLog: [], totalAlerts: 0 }),
+      if (connectionMode === 'bluetooth') {
+        get().disconnectBleDevice();
+      }
+
+      set({
+        isConnected: false,
+        isScanning: false,
+        intervalId: null,
+        lastUpdated: null,
+        sessionStart: null,
+        sessionStartTime: null,
+      });
+    },
+
+    // ──────────────────────────────────────────
+    // updateAlertRanges(newRanges)
+    // ──────────────────────────────────────────
+    updateAlertRanges: (newRanges: Partial<AlertRanges>) => {
+      const current = get();
+      set({
+        alertRanges: {
+          ph: { ...current.alertRanges.ph, ...newRanges.ph },
+          temperature: { ...current.alertRanges.temperature, ...newRanges.temperature },
+          turbidity: { ...current.alertRanges.turbidity, ...newRanges.turbidity },
+          conductivity: { ...current.alertRanges.conductivity, ...newRanges.conductivity },
+        },
+      });
+    },
+
+    // ──────────────────────────────────────────
+    // clearAlertLog()
+    // ──────────────────────────────────────────
+    clearAlertLog: () => set({ alertLog: [], totalAlerts: 0 }),
 }));
+
+// ─────────────────────────────────────────────
+// Conexión segura de listeners de bleService con el Store
+// ─────────────────────────────────────────────
+bleService.onStatusChange((status, error) => {
+  const isNowConnected = status === 'connected';
+  const isNowScanning = status === 'scanning';
+  const currentState = useSensorStore.getState();
+
+  useSensorStore.setState({
+    bleStatus: status,
+    isScanning: isNowScanning,
+    isConnected: isNowConnected,
+    bleError: error || null,
+    lastUpdated: isNowConnected ? new Date() : currentState.lastUpdated,
+    sessionStart: isNowConnected && !currentState.sessionStart ? new Date() : currentState.sessionStart,
+    sessionStartTime: isNowConnected && !currentState.sessionStartTime ? Date.now() : currentState.sessionStartTime,
+  });
+});
+
+bleService.onDevicesDiscovered((devices) => {
+  useSensorStore.setState({ bleDevices: devices });
+});
+
+bleService.onTelemetry((reading, rawText) => {
+  useSensorStore.getState().processTelemetryString(rawText);
+});
+
