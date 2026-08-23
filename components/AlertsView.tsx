@@ -544,7 +544,6 @@ export const AlertsView: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingBottom: 16,
   },
   topHeader: {
     flexDirection: 'row',
@@ -553,9 +552,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   mainHeading: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   livePulseWrap: {
     flexDirection: 'row',
@@ -579,7 +578,7 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '800',
     color: '#10B981',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   subHeading: {
     fontSize: 11,
@@ -629,8 +628,8 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   filterScroll: {
-    marginBottom: 10,
-    paddingVertical: 2,
+    maxHeight: 34,
+    marginBottom: 8,
   },
   filterPill: {
     paddingHorizontal: 10,
