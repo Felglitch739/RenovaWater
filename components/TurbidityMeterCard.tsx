@@ -43,7 +43,7 @@ const STATUS_META = {
   },
 } as const;
 
-export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
+export const TurbidityMeterCard = React.memo<TurbidityMeterCardProps>(({
   value,
   maxThreshold,
   status,
@@ -169,7 +169,7 @@ export const TurbidityMeterCard: React.FC<TurbidityMeterCardProps> = ({
       </View>
     </AuraCard>
   );
-};
+});
 
 const styles = StyleSheet.create({
   cardPadding: {

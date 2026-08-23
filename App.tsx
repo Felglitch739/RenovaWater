@@ -30,9 +30,14 @@ const Tab = createBottomTabNavigator();
 const DARK_THEME = { navBg: '#080C13', navBorder: 'rgba(255,255,255,0.06)' };
 const LIGHT_THEME = { navBg: '#FFFFFF', navBorder: 'rgba(0,0,0,0.10)' };
 
+import { useShallow } from 'zustand/react/shallow';
+
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { theme, totalAlerts } = useSensorStore();
+  const { theme, totalAlerts } = useSensorStore(useShallow(state => ({
+    theme: state.theme,
+    totalAlerts: state.totalAlerts
+  })));
   const isDark = theme === 'dark';
   const T = isDark ? DARK_THEME : LIGHT_THEME;
   const bottomPadding = Math.max(insets.bottom, 12);
@@ -210,7 +215,7 @@ function SettingsScreen() {
 }
 
 export default function App() {
-  const { theme } = useSensorStore();
+  const theme = useSensorStore(state => state.theme);
   const isDark = theme === 'dark';
 
   return (

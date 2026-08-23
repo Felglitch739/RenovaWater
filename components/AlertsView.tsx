@@ -7,6 +7,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 import { useSensorStore, type AlertEvent, type MetricStatus } from '../store/useSensorStore';
 import {
   TrashIcon,
@@ -238,7 +239,16 @@ const AlertCardItem: React.FC<AlertCardItemProps> = ({ event, isDark, alertRange
 // ─────────────────────────────────────────────
 
 export const AlertsView: React.FC = () => {
-  const { alertLog, clearAlertLog, isConnected, theme, alertRanges, visibleMeters } = useSensorStore();
+  const { alertLog, clearAlertLog, isConnected, theme, alertRanges, visibleMeters } = useSensorStore(
+    useShallow((state) => ({
+      alertLog: state.alertLog,
+      clearAlertLog: state.clearAlertLog,
+      isConnected: state.isConnected,
+      theme: state.theme,
+      alertRanges: state.alertRanges,
+      visibleMeters: state.visibleMeters,
+    }))
+  );
   const isDark = theme === 'dark';
 
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');

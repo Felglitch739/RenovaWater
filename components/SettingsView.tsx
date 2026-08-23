@@ -91,6 +91,8 @@ const METER_CONFIGS: MeterConfigItem[] = [
 // Vista principal: SettingsView (Ajustes de la Aplicación)
 // ─────────────────────────────────────────────────────────────
 
+import { useShallow } from 'zustand/react/shallow';
+
 export const SettingsView: React.FC = () => {
   const {
     visibleMeters,
@@ -116,7 +118,31 @@ export const SettingsView: React.FC = () => {
     rawTelemetry,
     theme,
     setTheme,
-  } = useSensorStore();
+  } = useSensorStore(useShallow(state => ({
+    visibleMeters: state.visibleMeters,
+    toggleMeter: state.toggleMeter,
+    resetVisibleMeters: state.resetVisibleMeters,
+    alertRanges: state.alertRanges,
+    isConnected: state.isConnected,
+    isScanning: state.isScanning,
+    connectionMode: state.connectionMode,
+    setConnectionMode: state.setConnectionMode,
+    bleDevices: state.bleDevices,
+    connectedDeviceName: state.connectedDeviceName,
+    connectedDeviceId: state.connectedDeviceId,
+    bleError: state.bleError,
+    startBleScan: state.startBleScan,
+    stopBleScan: state.stopBleScan,
+    connectBleDevice: state.connectBleDevice,
+    connect: state.connect,
+    disconnect: state.disconnect,
+    ph: state.ph,
+    adc: state.adc,
+    voltage: state.voltage,
+    rawTelemetry: state.rawTelemetry,
+    theme: state.theme,
+    setTheme: state.setTheme,
+  })));
 
   const isDark = theme === 'dark';
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);

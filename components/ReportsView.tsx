@@ -104,9 +104,19 @@ const SectionLabel: React.FC<{ label: string; isDark: boolean }> = ({ label, isD
 // Vista principal: ReportsView
 // ─────────────────────────────────────────────
 
+import { useShallow } from 'zustand/react/shallow';
+
 export const ReportsView: React.FC = () => {
   const { historyData, alertLog, totalAlerts, sessionStartTime, isConnected, theme, alertRanges } =
-    useSensorStore();
+    useSensorStore(useShallow(state => ({
+      historyData: state.historyData,
+      alertLog: state.alertLog,
+      totalAlerts: state.totalAlerts,
+      sessionStartTime: state.sessionStartTime,
+      isConnected: state.isConnected,
+      theme: state.theme,
+      alertRanges: state.alertRanges,
+    })));
   const isDark = theme === 'dark';
 
   const [realTimeDuration, setRealTimeDuration] = useState<string>('--');

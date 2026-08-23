@@ -65,7 +65,7 @@ function buildSplinePath(points: { x: number; y: number }[]): string {
   return path;
 }
 
-export const ConductivityChart: React.FC<ConductivityChartProps> = ({
+export const ConductivityChart = React.memo<ConductivityChartProps>(({
   data = [340, 355, 370, 362, 380, 395, 410, 405, 418, 425, 420],
   currentValue,
   unit = 'µS/cm',
@@ -271,7 +271,7 @@ export const ConductivityChart: React.FC<ConductivityChartProps> = ({
       </View>
     </AuraCard>
   );
-};
+});
 
 const styles = StyleSheet.create({
   cardPadding: {

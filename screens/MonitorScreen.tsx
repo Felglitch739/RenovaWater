@@ -75,6 +75,8 @@ const LIGHT_THEME = {
   card: ['#FFFFFF', '#F8FAFC'] as [string, string],
 };
 
+import { useShallow } from 'zustand/react/shallow';
+
 export const MonitorScreen: React.FC = () => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const navigation = useNavigation<NavigationProp<any>>();
@@ -94,7 +96,22 @@ export const MonitorScreen: React.FC = () => {
     setTheme,
     connect,
     disconnect,
-  } = useSensorStore();
+  } = useSensorStore(useShallow(state => ({
+    ph: state.ph,
+    temperature: state.temperature,
+    turbidity: state.turbidity,
+    isConnected: state.isConnected,
+    isScanning: state.isScanning,
+    alertRanges: state.alertRanges,
+    visibleMeters: state.visibleMeters,
+    historyData: state.historyData,
+    theme: state.theme,
+    connectionMode: state.connectionMode,
+    connectedDeviceName: state.connectedDeviceName,
+    setTheme: state.setTheme,
+    connect: state.connect,
+    disconnect: state.disconnect,
+  })));
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();

@@ -145,8 +145,14 @@ const NumberInput: React.FC<NumberInputProps> = ({
   </View>
 );
 
+import { useShallow } from 'zustand/react/shallow';
+
 export const ConfigModal: React.FC<ConfigModalProps> = ({ visible, onClose }) => {
-  const { alertRanges, updateAlertRanges, theme } = useSensorStore();
+  const { alertRanges, updateAlertRanges, theme } = useSensorStore(useShallow(state => ({
+    alertRanges: state.alertRanges,
+    updateAlertRanges: state.updateAlertRanges,
+    theme: state.theme,
+  })));
   const isDark = theme === 'dark';
 
   // Estados locales para los inputs
