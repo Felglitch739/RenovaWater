@@ -348,32 +348,28 @@ export const useSensorStore = create<SensorState>((set, get) => ({
     },
 
     // ──────────────────────────────────────────
-    // Acciones Bluetooth BLE
+    // Acciones Bluetooth BLE (Beacon / Broadcast)
     // ──────────────────────────────────────────
     startBleScan: async () => {
       set({ isScanning: true, bleError: null });
-      await bleService.startScan(12000);
+      await bleService.startScan();
     },
 
     stopBleScan: () => {
       bleService.stopScan();
-      set({ isScanning: false });
+      set({ isScanning: false, isConnected: false });
     },
 
     connectBleDevice: async (deviceId: string) => {
-      // Detener escaneo inmediatamente para liberar recursos de radio y CPU
-      get().stopBleScan();
-      set({ isScanning: false, bleError: null });
-      
+      set({ bleError: null });
       const success = await bleService.connectToDevice(deviceId);
       if (success) {
         const dev = bleService.getConnectedDevice();
         set({
           connectedDeviceId: deviceId,
-          connectedDeviceName: dev?.name || 'ESP32 pH Sonda',
+          connectedDeviceName: dev?.name || 'TPH_Mon',
           isConnected: true,
           connectionMode: 'bluetooth',
-          isScanning: false,
         });
       }
       return success;
@@ -385,6 +381,7 @@ export const useSensorStore = create<SensorState>((set, get) => ({
         connectedDeviceId: null,
         connectedDeviceName: null,
         isConnected: false,
+        isScanning: false,
       });
     },
 
@@ -509,10 +506,14 @@ bleService.onStatusChange((status, error) => {
     return;
   }
 
+  const dev = bleService.getConnectedDevice();
+
   useSensorStore.setState({
     bleStatus: status,
     isScanning: isNowScanning,
     isConnected: isNowConnected,
+    connectedDeviceName: dev?.name || (isNowConnected ? (currentState.connectedDeviceName || 'TPH_Mon') : null),
+    connectedDeviceId: dev?.id || (isNowConnected ? currentState.connectedDeviceId : null),
     bleError: error || null,
     lastUpdated: isNowConnected ? (currentState.lastUpdated || new Date()) : currentState.lastUpdated,
     sessionStart: isNowConnected && !currentState.sessionStart ? new Date() : currentState.sessionStart,

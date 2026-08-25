@@ -48,7 +48,31 @@ export function parseEsp32Telemetry(text: string): TelemetryReading | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
 
-  // 1. Intento con regex exacto / estándar:
+  // 1. Formato Compacto Beacon / Broadcast: "P:7.20,V:1.65" o "P:7.20, V:1.65" o "P:7.20|V:1.65"
+  const pMatch = trimmed.match(/P(?:H)?\s*[:=]\s*([\d.]+)/i);
+  const vMatch = trimmed.match(/V(?:OLT(?:AJE)?)?\s*[:=]\s*([\d.]+)/i);
+  const aMatch = trimmed.match(/A(?:DC)?\s*[:=]\s*([\d.]+)/i);
+
+  if (pMatch) {
+    const ph = parseFloat(pMatch[1]);
+    if (!isNaN(ph)) {
+      const voltage = vMatch ? parseFloat(vMatch[1]) : 0;
+      // Estimar ADC proporcional a 3.3V (0-4095) si no viene explícito
+      const adc = aMatch ? parseFloat(aMatch[1]) : (voltage > 0 ? Math.round((voltage / 3.3) * 4095) : 0);
+
+      return {
+        adc: isNaN(adc) ? 0 : adc,
+        voltage: isNaN(voltage) ? 0 : voltage,
+        ph: parseFloat(ph.toFixed(2)),
+        classification: classifyPh(ph),
+        timestamp: new Date(),
+        raw: trimmed,
+        isValid: true,
+      };
+    }
+  }
+
+  // 2. Intento con regex exacto / estándar legacy:
   // "ADC: 2048.00 | Voltaje: 1.65 V | pH: 7.00"
   const standardRegex = /ADC:\s*([\d.]+)\s*\|\s*Voltaje:\s*([\d.]+)\s*V?\s*\|\s*pH:\s*([\d.]+)/i;
   const match = trimmed.match(standardRegex);
@@ -71,7 +95,7 @@ export function parseEsp32Telemetry(text: string): TelemetryReading | null {
     }
   }
 
-  // 2. Intento flexible si los campos vienen en orden distinto o con separadores alternativos
+  // 3. Intento flexible si los campos vienen en orden distinto o con separadores alternativos
   const adcMatch = trimmed.match(/ADC:\s*([\d.]+)/i);
   const voltMatch = trimmed.match(/Voltaje:\s*([\d.]+)/i) || trimmed.match(/Voltage:\s*([\d.]+)/i);
   const phMatch = trimmed.match(/pH:\s*([\d.]+)/i);
@@ -94,17 +118,20 @@ export function parseEsp32Telemetry(text: string): TelemetryReading | null {
     }
   }
 
-  // 3. Intento formato JSON en caso de que se configure así en el firmware
+  // 4. Intento formato JSON en caso de que se configure así en el firmware
   try {
-    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      const json = JSON.parse(trimmed);
-      if (typeof json.ph === 'number' || typeof json.pH === 'number') {
-        const phVal = Number(json.ph ?? json.pH);
-        const adcVal = Number(json.adc ?? json.ADC ?? 0);
-        const voltVal = Number(json.voltage ?? json.voltaje ?? json.Voltaje ?? 0);
+    const jsonStart = trimmed.indexOf('{');
+    const jsonEnd = trimmed.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd > jsonStart) {
+      const jsonStr = trimmed.substring(jsonStart, jsonEnd + 1);
+      const json = JSON.parse(jsonStr);
+      const phVal = Number(json.P ?? json.p ?? json.ph ?? json.pH);
+      if (!isNaN(phVal)) {
+        const voltVal = Number(json.V ?? json.v ?? json.voltage ?? json.voltaje ?? json.Voltaje ?? 0);
+        const adcVal = Number(json.A ?? json.a ?? json.adc ?? json.ADC ?? (voltVal > 0 ? (voltVal / 3.3) * 4095 : 0));
         return {
-          adc: adcVal,
-          voltage: voltVal,
+          adc: isNaN(adcVal) ? 0 : adcVal,
+          voltage: isNaN(voltVal) ? 0 : voltVal,
           ph: parseFloat(phVal.toFixed(2)),
           classification: classifyPh(phVal),
           timestamp: new Date(),

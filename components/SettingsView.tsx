@@ -364,7 +364,9 @@ export const SettingsView: React.FC = () => {
                     </Text>
 
                     {bleDevices.map((dev) => {
-                      const isEsp = (dev.name || '').toLowerCase().includes('esp') || (dev.name || '').toLowerCase().includes('ph');
+                      const isEsp = (dev.name || '').toLowerCase().includes('esp') || 
+                                    (dev.name || '').toLowerCase().includes('ph') ||
+                                    (dev.name || '').toLowerCase().includes('tph');
                       const isThisConnecting = isConnecting && connectingDeviceId === dev.id;
 
                       return (
@@ -405,7 +407,7 @@ export const SettingsView: React.FC = () => {
                             {isThisConnecting ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
-                              <Text style={styles.connectBtnSmallText}>Conectar</Text>
+                              <Text style={styles.connectBtnSmallText}>Sincronizar</Text>
                             )}
                           </View>
                         </TouchableOpacity>

@@ -1,8 +1,13 @@
 /**
  * services/bleService.ts
  * 
- * Gestor de comunicación Bluetooth Low Energy (BLE) para ESP32.
- * Maneja escaneo, conexión, permisos en Android/iOS, suscripción de notificaciones UART y decodificación de datos.
+ * Gestor de comunicación Bluetooth Low Energy (BLE) para ESP32 en modo BEACON / BROADCAST.
+ * 
+ * Arquitectura:
+ * - NO utiliza conexiones GATT (device.connect() ni características UART eliminadas).
+ * - Realiza escaneo continuo de paquetes de advertising (startDeviceScan con allowDuplicates: true).
+ * - Detecta el dispositivo 'TPH_Mon' (o similar) y extrae directamente 'manufacturerData' (Base64).
+ * - Decodifica el payload (ej. "P:7.20,V:1.65"), parsea la telemetría y actualiza los listeners del Store.
  */
 
 import { Platform, PermissionsAndroid } from 'react-native';
@@ -13,7 +18,6 @@ import { parseEsp32Telemetry, type TelemetryReading } from './telemetryParser';
 export type BleConnectionStatus = 
   | 'disconnected'
   | 'scanning'
-  | 'connecting'
   | 'connected'
   | 'error';
 
@@ -22,16 +26,12 @@ export interface BleDiscoveredDevice {
   name: string | null;
   rssi: number | null;
   isConnectable?: boolean;
+  manufacturerData?: string | null;
+  lastSeen?: Date;
 }
 
-// UUIDs configurados en el firmware del ESP32
-export const ESP32_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b'.toLowerCase();
-export const ESP32_CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8'.toLowerCase();
-
-// UUIDs estándar de respaldo (Nordic UART)
-export const NORDIC_UART_SERVICE_UUID = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E'.toLowerCase();
-export const NORDIC_UART_TX_CHAR_UUID = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'.toLowerCase();
-export const NORDIC_UART_RX_CHAR_UUID = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'.toLowerCase();
+// Nombre esperado del dispositivo Beacon configurado en el firmware del ESP32
+export const TARGET_BEACON_NAME = 'TPH_Mon';
 
 type StatusListener = (status: BleConnectionStatus, error?: string) => void;
 type DeviceListener = (devices: BleDiscoveredDevice[]) => void;
@@ -40,27 +40,31 @@ type TelemetryListener = (reading: TelemetryReading, rawText: string) => void;
 class Esp32BleService {
   private bleManager: any = null;
   private isNativeAvailable: boolean = false;
-  private connectedDevice: any = null;
-  private characteristicSubscription: any = null;
-  private buffer: string = '';
-  
+  private isScanning: boolean = false;
+
+  private targetDevice: BleDiscoveredDevice | null = null;
   private discoveredDevicesMap: Map<string, BleDiscoveredDevice> = new Map();
+
   private statusListeners: Set<StatusListener> = new Set();
   private deviceListeners: Set<DeviceListener> = new Set();
   private telemetryListeners: Set<TelemetryListener> = new Set();
 
   private currentStatus: BleConnectionStatus = 'disconnected';
   private lastErrorMessage: string | null = null;
-  private scanTimeoutId: any = null;
+
   private notifyThrottleTimer: any = null;
   private isNotifyPending: boolean = false;
+
+  private beaconWatchdogTimer: any = null;
+  private telemetryThrottleTimer: any = null;
+  private pendingTelemetry: { reading: TelemetryReading; rawText: string } | null = null;
 
   constructor() {
     this.initBleManager();
   }
 
   /**
-   * Inicialización segura del BleManager
+   * Inicialización segura del BleManager nativo
    */
   private initBleManager() {
     try {
@@ -71,7 +75,7 @@ class Esp32BleService {
         this.isNativeAvailable = true;
       }
     } catch (err) {
-      console.warn('[BLE] Módulo nativo react-native-ble-plx no disponible en este entorno:', err);
+      console.warn('[BLE Beacon] Módulo nativo react-native-ble-plx no disponible en este entorno:', err);
       this.isNativeAvailable = false;
     }
   }
@@ -85,12 +89,7 @@ class Esp32BleService {
   }
 
   public getConnectedDevice(): BleDiscoveredDevice | null {
-    if (!this.connectedDevice) return null;
-    return {
-      id: this.connectedDevice.id,
-      name: this.connectedDevice.name || 'ESP32 pH Sonda',
-      rssi: this.connectedDevice.rssi ?? null,
-    };
+    return this.targetDevice;
   }
 
   // ── Suscripciones de eventos ──
@@ -121,17 +120,16 @@ class Esp32BleService {
 
   private notifyDevices() {
     const list = Array.from(this.discoveredDevicesMap.values()).sort((a, b) => {
-      const isEspA = (a.name || '').toLowerCase().includes('esp') || (a.name || '').toLowerCase().includes('ph') ? 1 : 0;
-      const isEspB = (b.name || '').toLowerCase().includes('esp') || (b.name || '').toLowerCase().includes('ph') ? 1 : 0;
-      if (isEspA !== isEspB) return isEspB - isEspA;
+      const isTargetA = (a.name || '').toLowerCase().includes('tph') ? 1 : 0;
+      const isTargetB = (b.name || '').toLowerCase().includes('tph') ? 1 : 0;
+      if (isTargetA !== isTargetB) return isTargetB - isTargetA;
       return (b.rssi ?? -999) - (a.rssi ?? -999);
     });
     this.deviceListeners.forEach((l) => l(list));
   }
 
   /**
-   * Notifica a los listeners usando un mecanismo de throttle (máx. una vez cada 500ms)
-   * para evitar desbordar el ciclo de renderizado de React / Zustand.
+   * Notifica la lista de dispositivos con throttle para evitar saturar React
    */
   private scheduleNotifyDevices(immediate: boolean = false) {
     if (immediate) {
@@ -156,7 +154,7 @@ class Esp32BleService {
         this.isNotifyPending = false;
         this.notifyDevices();
       }
-    }, 500);
+    }, 600);
   }
 
   // ── Permisos en Android ──
@@ -179,43 +177,41 @@ class Esp32BleService {
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
-            title: 'Permiso de Ubicación para Bluetooth',
-            message: 'TPH Monitor requiere acceso para descubrir dispositivos ESP32 cercanos.',
+            title: 'Permiso de Ubicación para Bluetooth BLE',
+            message: 'TPH Monitor requiere acceso para escanear Beacons de telemetría del ESP32.',
             buttonPositive: 'Aceptar',
           }
         );
         return granted === PermissionsAndroid.RESULTS.GRANTED;
       }
     } catch (err) {
-      console.error('[BLE] Error solicitando permisos Android:', err);
+      console.error('[BLE Beacon] Error solicitando permisos Android:', err);
       return false;
     }
   }
 
-  // ── Escaneo de dispositivos ──
+  // ── Escaneo continuo de Beacons (Broadcast) ──
 
-  public async startScan(timeoutMs: number = 15000): Promise<void> {
+  public async startScan(): Promise<void> {
     if (!this.isAvailable()) {
-      const msg = 'El módulo Bluetooth nativo no está disponible. Si usas Expo Go, requieres un Development Build (APK) para acceder al hardware Bluetooth.';
-      console.warn('[BLE]', msg);
+      const msg = 'El módulo Bluetooth nativo no está disponible. Requieres un Development Build (APK) para acceder al hardware Bluetooth.';
+      console.warn('[BLE Beacon]', msg);
       this.setStatus('error', msg);
       return;
     }
 
     const hasPermission = await this.requestPermissions();
     if (!hasPermission) {
-      this.setStatus('error', 'Permisos de Bluetooth o Ubicación denegados en el dispositivo.');
+      this.setStatus('error', 'Permisos de Bluetooth o Ubicación denegados.');
       return;
     }
 
     // Verificar estado del adaptador Bluetooth
     try {
       const state = await this.bleManager.state();
-      console.log('[BLE] Estado actual del adaptador Bluetooth:', state);
       if (state !== 'PoweredOn') {
         const isReady = await new Promise<boolean>((resolve) => {
           const sub = this.bleManager.onStateChange((newState: string) => {
-            console.log('[BLE] Cambio de estado de adaptador:', newState);
             if (newState === 'PoweredOn') {
               sub.remove();
               resolve(true);
@@ -228,314 +224,239 @@ class Esp32BleService {
         });
 
         if (!isReady) {
-          this.setStatus('error', 'Bluetooth apagado o no disponible. Por favor enciende el Bluetooth y la Ubicación (GPS) de tu teléfono.');
+          this.setStatus('error', 'Bluetooth apagado. Por favor enciende el Bluetooth de tu teléfono.');
           return;
         }
       }
     } catch (e: any) {
-      console.warn('[BLE] Error consultando estado de Bluetooth:', e);
+      console.warn('[BLE Beacon] Error consultando estado Bluetooth:', e);
     }
 
-    // Limpiar lista anterior y temporizadores pendientes
+    // Si ya estaba escaneando, no reiniciar innecesariamente
+    if (this.isScanning) {
+      console.log('[BLE Beacon] Escaneo continuo ya se encuentra activo.');
+      return;
+    }
+
     this.discoveredDevicesMap.clear();
     this.scheduleNotifyDevices(true);
     this.setStatus('scanning');
+    this.isScanning = true;
 
-    if (this.scanTimeoutId) clearTimeout(this.scanTimeoutId);
-
-    console.log('[BLE] Iniciando escaneo de periféricos BLE...');
+    console.log('[BLE Beacon] Iniciando escaneo continuo de Beacons ESP32 (allowDuplicates: true)...');
 
     try {
+      /**
+       * IMPORTANTE: allowDuplicates: true permite recibir de manera continua
+       * los paquetes de advertising que contienen la telemetría actualizada en cada ráfaga.
+       */
       this.bleManager.startDeviceScan(
-        null, // Escanear todos los servicios
-        { allowDuplicates: false },
+        null,
+        { allowDuplicates: true },
         (error: any, device: any) => {
           if (error) {
-            console.warn('[BLE] Error en startDeviceScan:', error);
+            console.warn('[BLE Beacon] Error en startDeviceScan:', error);
             this.stopScan();
             this.setStatus('error', error.message || 'Error durante el escaneo BLE');
             return;
           }
 
           if (device && device.id) {
-            const existing = this.discoveredDevicesMap.get(device.id);
-            const devName = device.name || device.localName || (existing ? existing.name : undefined);
-            
-            this.discoveredDevicesMap.set(device.id, {
-              id: device.id,
-              name: devName || 'Dispositivo Desconocido',
-              rssi: device.rssi ?? existing?.rssi ?? null,
-              isConnectable: device.isConnectable ?? true,
-            });
-
-            // Notificación throttled para evitar saturar el hilo JS y React
-            this.scheduleNotifyDevices(false);
+            this.handleDiscoveredBeacon(device);
           }
         }
       );
-
-      this.scanTimeoutId = setTimeout(() => {
-        console.log('[BLE] Tiempo de escaneo finalizado.');
-        this.stopScan();
-      }, timeoutMs);
     } catch (err: any) {
-      console.error('[BLE] Excepción en startScan:', err);
+      console.error('[BLE Beacon] Excepción al iniciar escaneo:', err);
+      this.isScanning = false;
       this.setStatus('error', err.message || 'Fallo al iniciar el escaneo BLE');
     }
   }
 
+  /**
+   * Procesa cada paquete de advertising recibido durante el escaneo continuo
+   */
+  private handleDiscoveredBeacon(device: any) {
+    const devName = device.name || device.localName || '';
+    const rawMfgData = device.manufacturerData;
+
+    // Actualizar registro en lista de dispositivos descubiertos
+    const existing = this.discoveredDevicesMap.get(device.id);
+    const resolvedName = devName || (existing ? existing.name : undefined) || 'Dispositivo BLE';
+
+    this.discoveredDevicesMap.set(device.id, {
+      id: device.id,
+      name: resolvedName,
+      rssi: device.rssi ?? existing?.rssi ?? null,
+      isConnectable: device.isConnectable ?? false,
+      manufacturerData: rawMfgData || existing?.manufacturerData || null,
+      lastSeen: new Date(),
+    });
+    this.scheduleNotifyDevices(false);
+
+    // 1. Verificar si es el dispositivo objetivo 'TPH_Mon' o si trae telemetría en manufacturerData
+    const isTargetName = 
+      devName.toLowerCase().includes(TARGET_BEACON_NAME.toLowerCase()) ||
+      resolvedName.toLowerCase().includes(TARGET_BEACON_NAME.toLowerCase()) ||
+      resolvedName.toLowerCase().includes('tph');
+
+    if (!rawMfgData) {
+      return;
+    }
+
+    // 2. Decodificar Base64 de manufacturerData
+    const decodedText = this.decodeManufacturerData(rawMfgData);
+    if (!decodedText) return;
+
+    // 3. Parsear telemetría (formato "P:7.20,V:1.65")
+    const reading = parseEsp32Telemetry(decodedText);
+
+    if (reading && reading.isValid) {
+      // Registrar dispositivo objetivo conectado virtualmente vía Beacon
+      this.targetDevice = {
+        id: device.id,
+        name: devName || TARGET_BEACON_NAME,
+        rssi: device.rssi ?? null,
+        manufacturerData: rawMfgData,
+        lastSeen: new Date(),
+      };
+
+      // Si estábamos solo en 'scanning', elevar estado a 'connected' (recepción activa)
+      if (this.currentStatus !== 'connected') {
+        console.log(`[BLE Beacon] ¡Beacon '${this.targetDevice.name}' detectado y sincronizado!`);
+        this.setStatus('connected');
+      }
+
+      // Reiniciar watchdog de recepción de Beacons
+      this.resetWatchdogTimer();
+
+      // Emitir lectura de telemetría a los suscriptores (Zustand)
+      this.dispatchTelemetry(reading, decodedText);
+    } else if (isTargetName) {
+      console.log(`[BLE Beacon] Paquete recibido de ${resolvedName} pero sin formato de telemetría válido:`, decodedText);
+    }
+  }
+
+  /**
+   * Decodifica la cadena Base64 proveniente de manufacturerData.
+   * Maneja tanto texto directo como paquetes que contengan prefijos binarios de Company Identifier.
+   */
+  public decodeManufacturerData(b64: string): string | null {
+    if (!b64 || typeof b64 !== 'string') return null;
+
+    try {
+      const decodedRaw = base64Decode(b64);
+      if (!decodedRaw || decodedRaw.length === 0) return null;
+
+      // Buscar patrones de texto reconocibles como P:7.20,V:1.65 o ADC:... o JSON
+      const pIndex = decodedRaw.search(/P(?:H)?\s*[:=]/i);
+      const adcIndex = decodedRaw.search(/ADC\s*[:=]/i);
+      const jsonIndex = decodedRaw.indexOf('{');
+
+      let startIndex = 0;
+      if (pIndex !== -1) {
+        startIndex = pIndex;
+      } else if (adcIndex !== -1) {
+        startIndex = adcIndex;
+      } else if (jsonIndex !== -1) {
+        startIndex = jsonIndex;
+      }
+
+      const cleanText = decodedRaw.substring(startIndex).trim();
+      return cleanText.length > 0 ? cleanText : decodedRaw.trim();
+    } catch (err) {
+      console.warn('[BLE Beacon] Error decodificando Base64 de manufacturerData:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Despacha la telemetría a los suscriptores con un leve throttle (~150ms)
+   * para proteger la tasa de refresco a 60 FPS sin perder reactividad en tiempo real.
+   */
+  private dispatchTelemetry(reading: TelemetryReading, rawText: string) {
+    this.pendingTelemetry = { reading, rawText };
+
+    if (this.telemetryThrottleTimer) return;
+
+    // Disparar lectura inmediata
+    if (this.pendingTelemetry) {
+      const { reading: r, rawText: t } = this.pendingTelemetry;
+      this.telemetryListeners.forEach((listener) => listener(r, t));
+      this.pendingTelemetry = null;
+    }
+
+    this.telemetryThrottleTimer = setTimeout(() => {
+      this.telemetryThrottleTimer = null;
+      if (this.pendingTelemetry) {
+        const { reading: r, rawText: t } = this.pendingTelemetry;
+        this.pendingTelemetry = null;
+        this.telemetryListeners.forEach((listener) => listener(r, t));
+      }
+    }, 150);
+  }
+
+  /**
+   * Watchdog: Si no se recibe ningún paquete de Beacon durante 7 segundos,
+   * el estado pasa de 'connected' a 'scanning' (buscando señal).
+   */
+  private resetWatchdogTimer() {
+    if (this.beaconWatchdogTimer) {
+      clearTimeout(this.beaconWatchdogTimer);
+    }
+
+    this.beaconWatchdogTimer = setTimeout(() => {
+      if (this.isScanning && this.currentStatus === 'connected') {
+        console.log('[BLE Beacon] Sin paquetes recientes del Beacon (Watchdog timeout). Buscando señal...');
+        this.setStatus('scanning');
+      }
+    }, 7000);
+  }
+
   public stopScan(): void {
-    if (this.scanTimeoutId) {
-      clearTimeout(this.scanTimeoutId);
-      this.scanTimeoutId = null;
+    if (this.beaconWatchdogTimer) {
+      clearTimeout(this.beaconWatchdogTimer);
+      this.beaconWatchdogTimer = null;
     }
     if (this.notifyThrottleTimer) {
       clearTimeout(this.notifyThrottleTimer);
       this.notifyThrottleTimer = null;
       this.isNotifyPending = false;
     }
+    if (this.telemetryThrottleTimer) {
+      clearTimeout(this.telemetryThrottleTimer);
+      this.telemetryThrottleTimer = null;
+      this.pendingTelemetry = null;
+    }
+
     if (this.isAvailable() && this.bleManager) {
       try {
         this.bleManager.stopDeviceScan();
       } catch (e) {
-        // Ignorar si no estaba escaneando
+        // Ignorar si no estaba activo
       }
     }
-    if (this.currentStatus === 'scanning') {
-      this.setStatus(this.connectedDevice ? 'connected' : 'disconnected');
-    }
+
+    this.isScanning = false;
+    this.setStatus('disconnected');
+    console.log('[BLE Beacon] Escaneo continuo detenido.');
   }
 
-  // ── Conexión y Suscripción ──
-
-  public async connectToDevice(deviceId: string): Promise<boolean> {
-    if (!this.isAvailable()) {
-      this.setStatus('error', 'Módulo Bluetooth nativo no disponible.');
-      return false;
-    }
-
-    // 1. Detener escaneo INMEDIATAMENTE para liberar el hilo de radio/CPU antes de conectar
-    this.stopScan();
-
-    // 2. Evitar múltiples conexiones concurrentes
-    if (this.currentStatus === 'connecting') {
-      console.log('[BLE] Intento de conexión ya en curso. Ignorando solicitud concurrente.');
-      return false;
-    }
-
-    // 3. Si ya está conectado al dispositivo solicitado, no reconectar
-    if (this.connectedDevice && this.connectedDevice.id === deviceId && this.currentStatus === 'connected') {
-      console.log('[BLE] El dispositivo ya está conectado.');
-      return true;
-    }
-
-    this.setStatus('connecting');
-
-    try {
-      // Conectar con el dispositivo
-      const device = await this.bleManager.connectToDevice(deviceId, {
-        autoConnect: false,
-        timeout: 12000,
-      });
-
-      this.connectedDevice = device;
-
-      // Monitorear desconexión inesperada
-      device.onDisconnected((error: any, disconnectedDev: any) => {
-        console.log('[BLE] Dispositivo desconectado:', disconnectedDev?.id, error);
-        this.cleanConnection();
-        this.setStatus('disconnected', error ? 'Conexión interrumpida' : undefined);
-      });
-
-      // Negociar MTU en Android (512 bytes para paquetes completos)
-      if (Platform.OS === 'android') {
-        try {
-          await device.requestMTU(512);
-        } catch {
-          // Si falla MTU, continuar con MTU estándar
-        }
-      }
-
-      // Descubrir servicios y características
-      await device.discoverAllServicesAndCharacteristics();
-      const services = await device.services();
-
-      console.log(`[BLE] Servicios descubiertos (${services.length}):`, services.map((s: any) => s.uuid));
-
-      let targetChar: any = null;
-
-      // PASO 1: Búsqueda exacta por UUID de ESP32 o Nordic UART
-      for (const service of services) {
-        const characteristics = await service.characteristics();
-        for (const char of characteristics) {
-          const sUuid = service.uuid.toLowerCase();
-          const cUuid = char.uuid.toLowerCase();
-          
-          console.log(`[BLE] -> Char: ${cUuid} en Serv: ${sUuid} | Notifiable: ${char.isNotifiable} | Indicatable: ${char.isIndicatable} | Readable: ${char.isReadable}`);
-
-          if (
-            cUuid === ESP32_CHARACTERISTIC_UUID ||
-            cUuid === NORDIC_UART_TX_CHAR_UUID ||
-            sUuid === ESP32_SERVICE_UUID
-          ) {
-            targetChar = char;
-            console.log(`[BLE] ¡Característica objetivo del ESP32 encontrada!: ${cUuid}`);
-            break;
-          }
-        }
-        if (targetChar) break;
-      }
-
-      // PASO 2: Si no hubo coincidencia exacta, buscar cualquier característica notifiable que NO sea de sistema
-      if (!targetChar) {
-        for (const service of services) {
-          const sUuid = service.uuid.toLowerCase();
-          // Ignorar servicios estándar del sistema Bluetooth (Generic Access 1800, Generic Attribute 1801, Device Info 180a)
-          if (sUuid.includes('1800') || sUuid.includes('1801') || sUuid.includes('180a')) {
-            continue;
-          }
-
-          const characteristics = await service.characteristics();
-          for (const char of characteristics) {
-            if (char.isNotifiable || char.isIndicatable) {
-              targetChar = char;
-              console.log(`[BLE] Característica notifiable fallback seleccionada: ${char.uuid}`);
-              break;
-            }
-          }
-          if (targetChar) break;
-        }
-      }
-
-      if (targetChar) {
-        // Si la característica soporta lectura, leer valor inicial
-        if (targetChar.isReadable) {
-          try {
-            const initialRead = await targetChar.read();
-            if (initialRead && initialRead.value) {
-              console.log('[BLE] Lectura inicial:', initialRead.value);
-              this.handleIncomingBase64(initialRead.value);
-            }
-          } catch (e) {
-            console.log('[BLE] Lectura inicial no disponible, continuando con monitor.');
-          }
-        }
-
-        this.subscribeToCharacteristic(targetChar);
-        this.setStatus('connected');
-        return true;
-      } else {
-        console.warn('[BLE] No se encontró ninguna característica de telemetría notifiable.');
-        this.setStatus('connected');
-        return true;
-      }
-    } catch (err: any) {
-      console.error('[BLE] Error conectando al dispositivo:', err);
-      this.cleanConnection();
-      this.setStatus('error', err.message || 'No se pudo conectar al ESP32');
-      return false;
-    }
-  }
-
-  private subscribeToCharacteristic(char: any) {
-    if (this.characteristicSubscription) {
-      try {
-        this.characteristicSubscription.remove();
-      } catch (e) {}
-      this.characteristicSubscription = null;
-    }
-
-    try {
-      console.log(`[BLE] Suscribiéndose a notificaciones de: ${char.uuid}`);
-      this.characteristicSubscription = char.monitor((error: any, characteristic: any) => {
-        if (error) {
-          console.warn('[BLE] Error en monitor de característica:', error);
-          return;
-        }
-
-        if (characteristic && characteristic.value) {
-          this.handleIncomingBase64(characteristic.value);
-        }
-      });
-    } catch (err) {
-      console.warn('[BLE] Error iniciando monitor de característica:', err);
-    }
-  }
+  // ── Métodos de compatibilidad con UI y Store ──
 
   /**
-   * Procesa los datos base64 recibidos por BLE
+   * En modo Beacon no existe conexión GATT. Inicia el escaneo continuo
+   * y sincroniza con el Beacon seleccionado.
    */
-  private handleIncomingBase64(base64Str: string) {
-    try {
-      const decodedText = base64Decode(base64Str);
-      console.log('[BLE Datos Recibidos]:', decodedText);
-      this.buffer += decodedText;
-
-      // Procesar líneas delimitadas por \n o \r
-      if (this.buffer.includes('\n') || this.buffer.includes('\r')) {
-        const lines = this.buffer.split(/[\r\n]+/);
-        const lastIncomplete = this.buffer.endsWith('\n') || this.buffer.endsWith('\r') ? '' : lines.pop() || '';
-        this.buffer = lastIncomplete;
-
-        for (const line of lines) {
-          const cleanLine = line.trim();
-          if (cleanLine.length > 0) {
-            this.processIncomingLine(cleanLine);
-          }
-        }
-      }
-
-      // Extraer todas las lecturas completas que coincidan con la telemetría del ESP32
-      const standardRegex = /ADC:\s*([\d.]+)\s*\|\s*Voltaje:\s*([\d.]+)\s*V?\s*\|\s*pH:\s*([\d.]+)/i;
-      let match = this.buffer.match(standardRegex);
-      while (match) {
-        this.processIncomingLine(match[0].trim());
-        this.buffer = this.buffer.substring(match.index! + match[0].length);
-        match = this.buffer.match(standardRegex);
-      }
-
-      // Prevenir desborde del buffer si hay datos no coincidentes
-      if (this.buffer.length > 512) {
-        this.buffer = this.buffer.substring(this.buffer.length - 128);
-      }
-    } catch (err) {
-      console.warn('[BLE] Error decodificando paquete base64:', err);
-    }
+  public async connectToDevice(deviceId?: string): Promise<boolean> {
+    console.log('[BLE Beacon] Modo Broadcast activo: Iniciando escaneo continuo en lugar de conexión GATT...');
+    await this.startScan();
+    return true;
   }
-
-  /**
-   * Parsea la línea de texto y notifica a los suscriptores
-   */
-  public processIncomingLine(lineText: string) {
-    const reading = parseEsp32Telemetry(lineText);
-    if (reading) {
-      this.telemetryListeners.forEach((listener) => listener(reading, lineText));
-    }
-  }
-
-  // ── Desconexión ──
 
   public async disconnect(): Promise<void> {
-    if (this.connectedDevice) {
-      try {
-        await this.connectedDevice.cancelConnection();
-      } catch (e) {
-        // Ignorar
-      }
-    }
-    this.cleanConnection();
-    this.setStatus('disconnected');
-  }
-
-  private cleanConnection() {
-    if (this.characteristicSubscription) {
-      try {
-        this.characteristicSubscription.remove();
-      } catch (e) {}
-      this.characteristicSubscription = null;
-    }
-    this.connectedDevice = null;
-    this.buffer = '';
+    this.stopScan();
+    this.targetDevice = null;
   }
 }
 
